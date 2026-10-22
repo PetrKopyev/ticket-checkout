@@ -1,6 +1,7 @@
 import { EVENT } from '../event'
+import { formatPrice } from '../format'
 import { ADULT_AGE, CHILD_LIMIT, CHILD_PRICE, FULL_PRICE } from '../rules'
-import { cardClass, chipClass, formatPrice } from './ui'
+import { cardClass, chipClass } from './ui'
 
 const EventHeader = () => (
   <header className={`${cardClass} mb-6 print:hidden`}>

@@ -1,8 +1,8 @@
 import { useId } from 'react'
-import { formatAge } from '../format'
+import { formatAge, formatPrice } from '../format'
 import { normalizeName, orderTotal, parseAge, ticketPrice, ticketType, validAges } from '../rules'
 import type { Participant } from '../types'
-import { chipClass, formatPrice } from './ui'
+import { chipClass } from './ui'
 
 const nameClass = 'break-words font-medium'
 const priceClass = 'shrink-0 whitespace-nowrap text-right font-semibold tabular-nums'

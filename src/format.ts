@@ -1,3 +1,5 @@
+export const formatPrice = (price: number) => price.toLocaleString('ru-RU') + ' ₽'
+
 export const plural = (count: number, one: string, few: string, many: string) => {
   const lastTwo = count % 100
   const last = count % 10

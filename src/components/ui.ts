@@ -1,5 +1,3 @@
-export const formatPrice = (price: number) => price.toLocaleString('ru-RU') + ' ₽'
-
 const focusClass = [
   'focus-visible:outline-2 focus-visible:outline-offset-2',
   'focus-visible:outline-violet-bright',
@@ -28,7 +26,7 @@ export const inputClass = [
   focusClass,
 ].join(' ')
 
-export const stepHeadingClass = 'scroll-mt-6 text-xl outline-none'
+export const stepHeadingClass = 'text-xl outline-none'
 
 export const cardClass = 'min-w-0 rounded-3xl border border-line bg-card p-5 shadow-card'
 
@@ -47,3 +45,5 @@ export const dangerChipClass = [
 ].join(' ')
 
 export const circleIconClass = 'flex size-11 shrink-0 items-center justify-center rounded-full'
+
+export const fieldId = (id: number, field: 'name' | 'age') => `participant-${id}-${field}`

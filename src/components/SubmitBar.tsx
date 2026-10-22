@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { formatPrice } from './ui'
+import { formatPrice } from '../format'
 
 const SubmitBar = ({ total, children }: { total: number; children: ReactNode }) => (
   <div className={[

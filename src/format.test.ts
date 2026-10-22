@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, plural } from './format'
+import { formatAge, formatPrice, plural } from './format'
 
 describe('plural', () => {
   it.each([
@@ -27,5 +27,15 @@ describe('formatAge', () => {
     [33, '33 года'],
   ])('%i — %s', (age, expected) => {
     expect(formatAge(age)).toBe(expected)
+  })
+})
+
+describe('formatPrice', () => {
+  it.each([
+    [1000, '1\u00a0000 ₽'],
+    [2000, '2\u00a0000 ₽'],
+    [500, '500 ₽'],
+  ])('%i — %s', (price, expected) => {
+    expect(formatPrice(price)).toBe(expected)
   })
 })

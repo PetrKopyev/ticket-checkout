@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { demoReset, demoTakeSeats, getSeats, subscribe } from './api.mock'
 import type { ConfirmResult } from './api.mock'
-import type { Participant, Step } from './types'
-import { buildOrder } from './rules'
+import type { Order, Participant, Step } from './types'
 import ParticipantsStep from './components/ParticipantsStep'
 import ReviewStep from './components/ReviewStep'
 import ResultStep from './components/ResultStep'
@@ -15,6 +14,7 @@ const App = () => {
   const [participants, setParticipants] = useState<Participant[]>([{ id: 1, name: '', age: '' }])
   const [email, setEmail] = useState('')
   const [result, setResult] = useState<ConfirmResult | null>(null)
+  const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null)
   const nextId = useRef(2)
   const stepContent = useRef<HTMLDivElement>(null)
   const previousStep = useRef(step)
@@ -45,11 +45,12 @@ const App = () => {
     setParticipants([{ id: nextId.current++, name: '', age: '' }])
     setEmail('')
     setResult(null)
+    setConfirmedOrder(null)
     setStep('participants')
   }
 
   return (
-    <main className="min-h-screen text-ink">
+    <main className="min-h-screen text-ink print:min-h-0">
       <div className="mx-auto min-w-0 max-w-5xl px-4 pt-6 pb-6">
         <EventHeader />
         <StepIndicator step={step} failed={step === 'result' && result?.ok === false} />
@@ -70,16 +71,17 @@ const App = () => {
               email={email}
               onEmailChange={setEmail}
               onBack={() => setStep('participants')}
-              onResult={(confirmation) => {
+              onResult={(confirmation, order) => {
                 setResult(confirmation)
+                setConfirmedOrder(order)
                 setStep('result')
               }}
             />
           )}
-          {step === 'result' && result && (
+          {step === 'result' && result && confirmedOrder && (
             <ResultStep
               result={result}
-              order={buildOrder(participants, email)}
+              order={confirmedOrder}
               onEdit={() => setStep('participants')}
               onReset={reset}
             />

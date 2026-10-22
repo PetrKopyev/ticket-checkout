@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { confirmOrder } from '../api.mock'
 import type { ConfirmResult } from '../api.mock'
 import { buildOrder, orderTotal, validateEmail } from '../rules'
-import type { Participant } from '../types'
+import type { Order, Participant } from '../types'
 import OrderSummary from './OrderSummary'
 import SubmitBar from './SubmitBar'
 import { cardClass, inputClass, primaryButtonClass, secondaryButtonClass, stepHeadingClass } from './ui'
@@ -13,7 +13,7 @@ const ReviewStep = ({ participants, email, onEmailChange, onBack, onResult }: {
   email: string
   onEmailChange: (email: string) => void
   onBack: () => void
-  onResult: (result: ConfirmResult) => void
+  onResult: (result: ConfirmResult, order: Order) => void
 }) => {
   const [touched, setTouched] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -31,7 +31,7 @@ const ReviewStep = ({ participants, email, onEmailChange, onBack, onResult }: {
     setIsSubmitting(true)
     try {
       const result = await confirmOrder(order)
-      onResult(result)
+      onResult(result, order)
     } finally {
       setIsSubmitting(false)
     }
