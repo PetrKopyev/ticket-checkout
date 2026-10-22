@@ -12,30 +12,32 @@ const MAX_NAME_LENGTH = 60
 const MAX_EMAIL_LENGTH = 254
 const EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/
 
-export type ParticipantErrors = { name?: string; age?: string }
+type ParticipantErrors = { name?: string; age?: string }
 
 export const parseAge = (age: string): number | null => {
   const value = age.trim()
   if (!/^\d+$/.test(value)) return null
-  const n = Number(value)
-  return n <= MAX_AGE ? n : null
+  const parsed = Number(value)
+  return parsed <= MAX_AGE ? parsed : null
 }
 
 export const ticketPrice = (age: number) => age < CHILD_LIMIT ? CHILD_PRICE : FULL_PRICE
 export const ticketType = (age: number) => age < CHILD_LIMIT ? 'Детский' : 'Полный'
 
 const validAges = (participants: Participant[]) =>
-  participants.map((p) => parseAge(p.age)).filter((age) => age !== null)
+  participants.map((participant) => parseAge(participant.age)).filter((age) => age !== null)
 
 export const orderTotal = (participants: Participant[]) =>
   validAges(participants).reduce((sum, age) => sum + ticketPrice(age), 0)
 
-export const validateParticipant = (p: Participant): ParticipantErrors => {
+const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ')
+
+export const validateParticipant = (participant: Participant): ParticipantErrors => {
   const errors: ParticipantErrors = {}
-  const name = p.name.trim()
+  const name = normalizeName(participant.name)
   if (!name) errors.name = 'Введите имя'
   else if (name.length > MAX_NAME_LENGTH) errors.name = `Имя не длиннее ${MAX_NAME_LENGTH} символов`
-  if (parseAge(p.age) === null) errors.age = `Введите возраст — целое число от 0 до ${MAX_AGE}`
+  if (parseAge(participant.age) === null) errors.age = `Введите возраст — целое число от 0 до ${MAX_AGE}`
   return errors
 }
 
@@ -53,13 +55,16 @@ export const validateOrder = (participants: Participant[], seats: number): strin
   const ages = validAges(participants)
   const hasChild = ages.some((age) => age < CHILD_LIMIT)
   const hasAdult = ages.some((age) => age >= ADULT_AGE)
-  if (hasChild && !hasAdult) return `Детям до ${CHILD_LIMIT} лет нужен участник от ${ADULT_AGE} лет в заказе`
+  if (hasChild && !hasAdult) {
+    return `Детям до ${CHILD_LIMIT} лет нужен участник от ${ADULT_AGE} лет в заказе`
+  }
 }
 
 export const buildOrder = (participants: Participant[], email: string): Order => ({
   participants: participants.map((participant) => ({
     ...participant,
-    name: participant.name.trim().replace(/\s+/g, ' '),
+    name: normalizeName(participant.name),
+    age: participant.age.trim(),
   })),
   email: email.trim(),
 })

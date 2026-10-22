@@ -4,6 +4,7 @@ import {
   ADULT_AGE,
   CHILD_LIMIT,
   CHILD_PRICE,
+  FULL_PRICE,
   MAX_PARTICIPANTS,
   NO_SEATS_MESSAGE,
   orderTotal,
@@ -25,19 +26,21 @@ import {
   secondaryButtonClass,
 } from './ui'
 
+const fieldId = (id: number, field: 'name' | 'age') => `participant-${id}-${field}`
+
 const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onTouch, onRemove }: {
   participant: Participant
   index: number
   canRemove: boolean
   touched: Record<string, boolean>
   onChange: (participant: Participant) => void
-  onTouch: (fieldId: string) => void
+  onTouch: (id: string) => void
   onRemove: () => void
 }) => {
   const errors = validateParticipant(participant)
   const headingId = `participant-${participant.id}-heading`
-  const nameId = `participant-${participant.id}-name`
-  const ageId = `participant-${participant.id}-age`
+  const nameId = fieldId(participant.id, 'name')
+  const ageId = fieldId(participant.id, 'age')
   const nameError = touched[nameId] && errors.name
   const ageError = touched[ageId] && errors.age
   const age = parseAge(participant.age)
@@ -114,7 +117,7 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
   useEffect(() => {
     if (!shouldFocusAfterRemove.current) return
     shouldFocusAfterRemove.current = false
-    const target = addButton.current ?? document.getElementById(`participant-${participants[0].id}-name`)
+    const target = addButton.current ?? document.getElementById(fieldId(participants[0].id, 'name'))
     target?.focus()
   }, [participants])
 
@@ -122,14 +125,14 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
     event.preventDefault()
     setSubmitted(true)
     setTouched(Object.fromEntries(participants.flatMap((participant) => [
-      [`participant-${participant.id}-name`, true],
-      [`participant-${participant.id}-age`, true],
+      [fieldId(participant.id, 'name'), true],
+      [fieldId(participant.id, 'age'), true],
     ])))
     for (const participant of participants) {
       const errors = validateParticipant(participant)
       const field = errors.name ? 'name' : errors.age ? 'age' : undefined
       if (field) {
-        document.getElementById(`participant-${participant.id}-${field}`)?.focus()
+        document.getElementById(fieldId(participant.id, field))?.focus()
         return
       }
     }
@@ -140,9 +143,9 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
     <div className="grid min-w-0 items-start gap-6 md:grid-cols-[1fr_18rem]">
       <form noValidate onSubmit={handleSubmit} className="min-w-0 space-y-5">
         <div>
-          <h2 tabIndex={-1} className="text-xl outline-none">Участники</h2>
+          <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Участники</h2>
           <p className="mt-1 text-ink-muted">
-            Осталось мест: {seats} · Участников: {participants.length} из {MAX_PARTICIPANTS}
+            Осталось мест: {seats} · Участников: {participants.length} (не более {MAX_PARTICIPANTS})
           </p>
         </div>
         {seats === 0 && <p role="alert" className={alertClass}>{NO_SEATS_MESSAGE}</p>}
@@ -154,7 +157,7 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
             canRemove={participants.length > 1}
             touched={touched}
             onChange={onChange}
-            onTouch={(fieldId) => setTouched((previous) => ({ ...previous, [fieldId]: true }))}
+            onTouch={(id) => setTouched((previous) => ({ ...previous, [id]: true }))}
             onRemove={() => {
               shouldFocusAfterRemove.current = true
               onRemove(participant.id)
@@ -166,18 +169,20 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
             Добавить участника
           </button>
         )}
-        <p className="text-lg font-extrabold md:hidden">
+        <p aria-hidden="true" className="text-lg font-extrabold md:hidden">
           Итого: <span className="text-violet-soft">{formatPrice(orderTotal(participants))}</span>
         </p>
         {orderError ? (
           <p role="alert" className={alertClass}>{orderError}</p>
         ) : (
           <p className="text-sm leading-6 text-ink-muted">
-            Детям до {CHILD_LIMIT} лет билет за {formatPrice(CHILD_PRICE)};
-            в заказе с ребёнком должен быть участник от {ADULT_AGE} лет
+            Детям до {CHILD_LIMIT} лет билет за {formatPrice(CHILD_PRICE)},
+            полный — {formatPrice(FULL_PRICE)}; в заказе с ребёнком должен быть участник от {ADULT_AGE} лет
           </p>
         )}
-        <button type="submit" className={primaryButtonClass}>Продолжить</button>
+        <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
+          Продолжить
+        </button>
       </form>
       <aside className="min-w-0 md:sticky md:top-6">
         <OrderSummary participants={participants} />

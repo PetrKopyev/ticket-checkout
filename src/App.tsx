@@ -21,7 +21,7 @@ const App = () => {
   useEffect(() => {
     if (previousStep.current === step) return
     previousStep.current = step
-    stepContent.current?.querySelector('h2')?.focus()
+    stepContent.current?.querySelector<HTMLElement>('[data-step-heading]')?.focus()
   }, [step])
 
   const addParticipant = () => {

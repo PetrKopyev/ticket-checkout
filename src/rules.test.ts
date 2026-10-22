@@ -52,6 +52,10 @@ describe('validateParticipant', () => {
     expect(validateParticipant(person('30', name)).name).toBe('Введите имя')
   })
 
+  it('считает длину имени после схлопывания пробелов', () => {
+    expect(validateParticipant(person('30', 'А' + ' '.repeat(60) + 'Б'))).toEqual({})
+  })
+
   it('имя длиннее 60 символов', () => {
     expect(validateParticipant(person('30', 'я'.repeat(61))).name).toBe('Имя не длиннее 60 символов')
     expect(validateParticipant(person('30', 'я'.repeat(60)))).toEqual({})
@@ -76,10 +80,10 @@ describe('validateEmail', () => {
 })
 
 describe('buildOrder', () => {
-  it('обрезает пробелы, схлопывает пробелы в имени и сохраняет id и возраст', () => {
+  it('обрезает пробелы, схлопывает пробелы в имени и сохраняет id', () => {
     const participant = person(' 30 ', '  Анна   Мария ')
     expect(buildOrder([participant], ' a@b.ru ')).toEqual({
-      participants: [{ id: participant.id, name: 'Анна Мария', age: ' 30 ' }],
+      participants: [{ id: participant.id, name: 'Анна Мария', age: '30' }],
       email: 'a@b.ru',
     })
   })

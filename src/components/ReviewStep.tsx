@@ -39,7 +39,7 @@ const ReviewStep = ({ participants, email, onEmailChange, onBack, onResult }: {
   return (
     <div className="grid min-w-0 items-start gap-6 md:grid-cols-[1fr_18rem]">
       <div className="min-w-0 space-y-5">
-        <h2 tabIndex={-1} className="text-xl outline-none">Проверьте заказ</h2>
+        <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Проверьте заказ</h2>
         <form noValidate onSubmit={handleSubmit} className={cardClass}>
           <label htmlFor="order-email" className="text-sm font-medium">Email</label>
           <input
