@@ -1,8 +1,4 @@
-import { CHILD_PRICE, ticketPrice } from '../rules'
-
 export const formatPrice = (price: number) => price.toLocaleString('ru-RU') + ' ₽'
-
-export const ticketType = (age: number) => ticketPrice(age) === CHILD_PRICE ? 'Детский' : 'Полный'
 
 export const focusClass = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
 

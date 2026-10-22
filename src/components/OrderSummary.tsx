@@ -1,6 +1,6 @@
-import { orderTotal, parseAge, ticketPrice } from '../rules'
+import { orderTotal, parseAge, ticketPrice, ticketType } from '../rules'
 import type { Participant } from '../types'
-import { formatPrice, ticketType } from './ui'
+import { formatPrice } from './ui'
 
 const OrderSummary = ({ participants }: { participants: Participant[] }) => (
   <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="summary-heading">

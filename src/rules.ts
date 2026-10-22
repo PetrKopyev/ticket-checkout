@@ -5,6 +5,7 @@ export const CHILD_LIMIT = 14
 export const FULL_PRICE = 2000
 export const CHILD_PRICE = 1000
 export const MAX_PARTICIPANTS = 4
+export const NO_SEATS_MESSAGE = 'Мест нет'
 
 const MAX_AGE = 120
 const MAX_NAME_LENGTH = 60
@@ -20,6 +21,7 @@ export const parseAge = (age: string): number | null => {
 }
 
 export const ticketPrice = (age: number) => (age < CHILD_LIMIT ? CHILD_PRICE : FULL_PRICE)
+export const ticketType = (age: number) => age < CHILD_LIMIT ? 'Детский' : 'Полный'
 
 const validAges = (participants: Participant[]) =>
   participants.map((p) => parseAge(p.age)).filter((age) => age !== null)
@@ -45,7 +47,7 @@ export const validateEmail = (email: string) => {
 export const validateOrder = (participants: Participant[], seats: number) => {
   const count = participants.length
   if (count < 1 || count > MAX_PARTICIPANTS) return `В заказе от 1 до ${MAX_PARTICIPANTS} участников`
-  if (count > seats) return seats === 0 ? 'Мест нет' : `Доступно мест: ${seats}`
+  if (count > seats) return seats === 0 ? NO_SEATS_MESSAGE : `Доступно мест: ${seats}`
   const ages = validAges(participants)
   const hasChild = ages.some((age) => age < CHILD_LIMIT)
   const hasAdult = ages.some((age) => age >= ADULT_AGE)

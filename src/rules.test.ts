@@ -3,6 +3,7 @@ import {
   orderTotal,
   parseAge,
   ticketPrice,
+  ticketType,
   validateEmail,
   validateOrder,
   validateParticipant,
@@ -10,16 +11,26 @@ import {
 } from './rules'
 import type { Participant } from './types'
 
-const person = (age: string, name = 'Аня'): Participant => ({ id: Number(age) || 0, name, age })
+let nextId = 0
+const person = (age: string, name = 'Аня'): Participant => ({ id: nextId++, name, age })
 
 const ESCORT_ERROR = 'Детям до 14 лет нужен участник от 18 лет в заказе'
 const COUNT_ERROR = 'В заказе от 1 до 4 участников'
 
 describe('ticketPrice', () => {
   it('детский билет до 14 лет', () => {
+    expect(ticketPrice(0)).toBe(1000)
     expect(ticketPrice(13)).toBe(1000)
     expect(ticketPrice(14)).toBe(2000)
     expect(ticketPrice(17)).toBe(2000)
+    expect(ticketPrice(18)).toBe(2000)
+  })
+})
+
+describe('ticketType', () => {
+  it('детский до 14 лет, затем полный', () => {
+    expect(ticketType(13)).toBe('Детский')
+    expect(ticketType(14)).toBe('Полный')
   })
 })
 
@@ -66,6 +77,18 @@ describe('validateEmail', () => {
 })
 
 describe('validateOrder', () => {
+  it('один 15-летний проходит', () => {
+    expect(validateOrder([person('15')], 10)).toBeUndefined()
+  })
+
+  it('невалидный возраст не считается взрослым', () => {
+    expect(validateOrder([person('13'), person('abc')], 10)).toBe(ESCORT_ERROR)
+  })
+
+  it('четыре участника на четыре места проходят', () => {
+    expect(validateOrder([person('20'), person('21'), person('22'), person('23')], 4)).toBeUndefined()
+  })
+
   it('ребёнку 13 нужен участник от 18, 17 лет не считается', () => {
     expect(validateOrder([person('13'), person('17')], 10)).toBe(ESCORT_ERROR)
     expect(validateOrder([person('13')], 10)).toBe(ESCORT_ERROR)
