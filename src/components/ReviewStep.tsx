@@ -2,9 +2,10 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmOrder } from '../api.mock'
 import type { ConfirmResult } from '../api.mock'
-import { buildOrder, validateEmail } from '../rules'
+import { buildOrder, orderTotal, validateEmail } from '../rules'
 import type { Participant } from '../types'
 import OrderSummary from './OrderSummary'
+import SubmitBar from './SubmitBar'
 import { cardClass, inputClass, primaryButtonClass, secondaryButtonClass } from './ui'
 
 const ReviewStep = ({ participants, email, onEmailChange, onBack, onResult }: {
@@ -37,43 +38,43 @@ const ReviewStep = ({ participants, email, onEmailChange, onBack, onResult }: {
   }
 
   return (
-    <div className="grid min-w-0 items-start gap-6 md:grid-cols-[1fr_18rem]">
-      <div className="min-w-0 space-y-5">
-        <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Проверьте заказ</h2>
-        <form noValidate onSubmit={handleSubmit} className={cardClass}>
-          <label htmlFor="order-email" className="text-sm font-medium">Email</label>
-          <input
-            id="order-email"
-            type="email"
-            autoComplete="email"
-            value={email}
+    <div className="min-w-0 max-w-2xl space-y-5">
+      <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Проверьте заказ</h2>
+      <div className={cardClass}>
+        <OrderSummary participants={order.participants} />
+      </div>
+      <form noValidate onSubmit={handleSubmit} className={cardClass}>
+        <label htmlFor="order-email" className="text-sm font-medium">Email</label>
+        <input
+          id="order-email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          disabled={isSubmitting}
+          onChange={(event) => onEmailChange(event.target.value)}
+          onBlur={() => setTouched(true)}
+          aria-invalid={Boolean(emailError)}
+          aria-describedby={emailError ? 'order-email-error' : undefined}
+          className={inputClass}
+        />
+        {emailError && <p id="order-email-error" className="mt-2 text-sm text-red">{emailError}</p>}
+        <p className="mt-3 text-sm text-ink-muted">На этот адрес отправим билеты.</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onBack}
             disabled={isSubmitting}
-            onChange={(event) => onEmailChange(event.target.value)}
-            onBlur={() => setTouched(true)}
-            aria-invalid={Boolean(emailError)}
-            aria-describedby={emailError ? 'order-email-error' : undefined}
-            className={inputClass}
-          />
-          {emailError && <p id="order-email-error" className="mt-2 text-sm text-red">{emailError}</p>}
-          <p className="mt-3 text-sm text-ink-muted">На этот адрес отправим билеты.</p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              disabled={isSubmitting}
-              className={secondaryButtonClass}
-            >
-              Изменить
-            </button>
+            className={secondaryButtonClass}
+          >
+            Изменить
+          </button>
+          <SubmitBar total={orderTotal(participants)}>
             <button type="submit" disabled={isSubmitting} className={primaryButtonClass}>
               {isSubmitting ? 'Оформляем…' : 'Подтвердить'}
             </button>
-          </div>
-        </form>
-      </div>
-      <aside className="min-w-0 md:sticky md:top-6">
-        <OrderSummary participants={order.participants} />
-      </aside>
+          </SubmitBar>
+        </div>
+      </form>
     </div>
   )
 }

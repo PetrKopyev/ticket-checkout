@@ -6,6 +6,8 @@ import { buildOrder } from './rules'
 import ParticipantsStep from './components/ParticipantsStep'
 import ReviewStep from './components/ReviewStep'
 import ResultStep from './components/ResultStep'
+import EventHeader from './components/EventHeader'
+import StepIndicator from './components/StepIndicator'
 import { secondaryButtonClass } from './components/ui'
 
 const App = () => {
@@ -46,15 +48,9 @@ const App = () => {
 
   return (
     <main className="min-h-screen text-ink">
-      <div className="mx-auto max-w-4xl px-4 py-6">
-        <header className="mb-8 border-b border-line pb-6">
-          <p className="mb-2 text-sm font-medium text-violet-soft">Покупка билетов</p>
-          <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="" width={32} height={32} className="shrink-0" />
-            <h1 className="min-w-0 text-2xl sm:text-3xl">Фестиваль «Огни города»</h1>
-          </div>
-          <p className="mt-3 text-ink-muted">14 июня, 19:00</p>
-        </header>
+      <div className="mx-auto min-w-0 max-w-5xl px-4 pt-6 pb-40 md:pb-6">
+        <EventHeader />
+        <StepIndicator step={step} failed={step === 'result' && result?.ok === false} />
         <div ref={stepContent}>
           {step === 'participants' && (
             <ParticipantsStep

@@ -22,6 +22,12 @@
 }
 
 @layer base {
+  @media (width < 48rem) {
+    html {
+      scroll-padding-bottom: 7rem;
+    }
+  }
+
   :root {
     color-scheme: dark;
   }

@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
-  ADULT_AGE,
-  CHILD_LIMIT,
-  CHILD_PRICE,
-  FULL_PRICE,
   MAX_PARTICIPANTS,
   NO_SEATS_MESSAGE,
   orderTotal,
@@ -16,12 +12,15 @@ import {
 } from '../rules'
 import type { Participant } from '../types'
 import OrderSummary from './OrderSummary'
+import SubmitBar from './SubmitBar'
 import {
   alertClass,
   cardClass,
   chipClass,
+  dangerChipClass,
   formatPrice,
   inputClass,
+  plural,
   primaryButtonClass,
   secondaryButtonClass,
 } from './ui'
@@ -47,21 +46,12 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
 
   return (
     <section aria-labelledby={headingId} className={cardClass}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h3 id={headingId}>Участник {index + 1}</h3>
-        {canRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            aria-label={`Удалить участника ${index + 1}`}
-            className={secondaryButtonClass}
-          >
-            Удалить
-          </button>
-        )}
-      </div>
-      <div className="space-y-4">
-        <div>
+      <h3 id={headingId} className="mb-4 text-sm font-semibold text-ink-muted">Участник {index + 1}</h3>
+      <div className={[
+        'grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4',
+        'md:grid-cols-[minmax(0,1fr)_8rem_10rem_auto]',
+      ].join(' ')}>
+        <div className="min-w-0">
           <label htmlFor={nameId} className="text-sm font-medium">Имя</label>
           <input
             id={nameId}
@@ -76,7 +66,7 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
           />
           {nameError && <p id={`${nameId}-error`} className="mt-2 text-sm text-red">{nameError}</p>}
         </div>
-        <div>
+        <div className="min-w-0">
           <label htmlFor={ageId} className="text-sm font-medium">Возраст</label>
           <input
             id={ageId}
@@ -91,11 +81,32 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
           />
           {ageError && <p id={`${ageId}-error`} className="mt-2 text-sm text-red">{ageError}</p>}
         </div>
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 md:contents">
+          <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 self-start md:mt-7">
+            {age !== null && (
+              <>
+                <span className={chipClass}>{ticketType(age)}</span>
+                <span className="whitespace-nowrap font-semibold tabular-nums">
+                  {formatPrice(ticketPrice(age))}
+                </span>
+              </>
+            )}
+            {age === null && !ageError && <p className="text-sm text-ink-muted">Укажите возраст</p>}
+          </div>
+          {canRemove && (
+            <div className="flex min-h-11 min-w-0 items-center self-start md:mt-7">
+              <button
+                type="button"
+                onClick={onRemove}
+                aria-label={`Удалить участника ${index + 1}`}
+                className={secondaryButtonClass}
+              >
+                Удалить
+              </button>
+            </div>
+          )}
+        </div>
       </div>
-      {age !== null && (
-        <p className={`mt-4 ${chipClass}`}>{ticketType(age)} · {formatPrice(ticketPrice(age))}</p>
-      )}
-      {age === null && !ageError && <p className="mt-4 text-sm text-ink-muted">Укажите возраст</p>}
     </section>
   )
 }
@@ -140,13 +151,20 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
   }
 
   return (
-    <div className="grid min-w-0 items-start gap-6 md:grid-cols-[1fr_18rem]">
+    <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <form noValidate onSubmit={handleSubmit} className="min-w-0 space-y-5">
         <div>
           <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Участники</h2>
-          <p className="mt-1 text-ink-muted">
-            Осталось мест: {seats} · Участников: {participants.length} (не более {MAX_PARTICIPANTS})
-          </p>
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
+            <p className={seats <= 3 ? dangerChipClass : chipClass}>
+              {seats === 0 ? 'Мест нет' : (
+                `Осталось ${seats <= 3 ? 'всего ' : ''}${seats} ${plural(seats, 'место', 'места', 'мест')}`
+              )}
+            </p>
+            <p className="text-sm text-ink-muted">
+              Участников: {participants.length} из {MAX_PARTICIPANTS}
+            </p>
+          </div>
         </div>
         {seats === 0 && <p role="alert" className={alertClass}>{NO_SEATS_MESSAGE}</p>}
         {participants.map((participant, index) => (
@@ -169,23 +187,17 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
             Добавить участника
           </button>
         )}
-        <p aria-hidden="true" className="text-lg font-extrabold md:hidden">
-          Итого: <span className="text-violet-soft">{formatPrice(orderTotal(participants))}</span>
-        </p>
-        {orderError ? (
-          <p role="alert" className={alertClass}>{orderError}</p>
-        ) : (
-          <p className="text-sm leading-6 text-ink-muted">
-            Детям до {CHILD_LIMIT} лет билет за {formatPrice(CHILD_PRICE)},
-            полный — {formatPrice(FULL_PRICE)}; в заказе с ребёнком должен быть участник от {ADULT_AGE} лет
-          </p>
-        )}
-        <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
-          Продолжить
-        </button>
+        {orderError && <p role="alert" className={alertClass}>{orderError}</p>}
+        <div>
+          <SubmitBar total={orderTotal(participants)}>
+            <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
+              Продолжить
+            </button>
+          </SubmitBar>
+        </div>
       </form>
-      <aside className="min-w-0 md:sticky md:top-6">
-        <OrderSummary participants={participants} />
+      <aside className={`${cardClass} lg:sticky lg:top-6`}>
+        <OrderSummary participants={participants} compact />
       </aside>
     </div>
   )
