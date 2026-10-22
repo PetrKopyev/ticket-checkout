@@ -14,7 +14,7 @@ const StepIndicator = ({ step, failed }: {
   const currentIndex = steps.findIndex((item) => item.id === step)
 
   return (
-    <nav aria-label="Шаги оформления" className="mb-6 min-w-0">
+    <nav aria-label="Шаги оформления" className="mb-6 min-w-0 print:hidden">
       <ol className="flex min-w-0 items-center gap-1 sm:gap-3">
         {steps.map((item, index) => {
           const current = index === currentIndex

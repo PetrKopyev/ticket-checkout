@@ -63,10 +63,6 @@
     cursor: pointer;
   }
 
-  button:disabled {
-    cursor: not-allowed;
-  }
-
   h1, h2, h3 {
     font-weight: 800;
     letter-spacing: -0.02em;
@@ -74,23 +70,18 @@
 }
 
 @media print {
+  :root {
+    color-scheme: light;
+  }
+
   body {
-    visibility: hidden;
-    background: #fff;
+    background: none;
   }
 
   [data-print-ticket], [data-print-ticket] * {
-    visibility: visible;
-    color: #000 !important;
-    border-color: #000 !important;
-    background: transparent !important;
-  }
-
-  [data-print-ticket] {
-    position: absolute;
-    inset: 0 0 auto 0;
-    background: #fff !important;
-    border: 0;
-    box-shadow: none !important;
+    color: #000;
+    border-color: #000;
+    background: transparent;
+    box-shadow: none;
   }
 }

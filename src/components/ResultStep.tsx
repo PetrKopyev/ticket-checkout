@@ -54,12 +54,11 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
           </div>
           <p className="mt-5 break-words text-sm text-ink-muted">Билеты отправим на {order.email}</p>
         </section>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 print:hidden">
           <button type="button" onClick={onReset} className={primaryButtonClass}>Оформить ещё</button>
           <button
             type="button"
             onClick={() => window.print()}
-            title="Откроется окно печати, где можно сохранить билеты как PDF"
             className={secondaryButtonClass}
           >
             Скачать билеты

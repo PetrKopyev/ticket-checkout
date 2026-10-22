@@ -24,7 +24,8 @@ const App = () => {
     if (previousStep.current === step) return
     previousStep.current = step
     window.scrollTo({ top: 0 })
-    stepContent.current?.querySelector<HTMLElement>('[data-step-heading]')?.focus({ preventScroll: true })
+    const heading = stepContent.current?.querySelector<HTMLElement>('[data-step-heading]')
+    heading?.focus({ preventScroll: true })
   }, [step])
 
   const addParticipant = () => {
@@ -86,7 +87,7 @@ const App = () => {
         </div>
         <section
           aria-label="Демо"
-          className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5"
+          className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5 print:hidden"
         >
           <p className="text-sm text-ink-muted">Инструмент для демонстрации</p>
           <p className="mt-2 text-sm text-ink-muted">Мест сейчас: {seats}</p>
