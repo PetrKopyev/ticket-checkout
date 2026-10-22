@@ -24,20 +24,23 @@ export const parseAge = (age: string): number | null => {
 export const ticketPrice = (age: number) => age < CHILD_LIMIT ? CHILD_PRICE : FULL_PRICE
 export const ticketType = (age: number) => age < CHILD_LIMIT ? 'Детский' : 'Полный'
 
-const validAges = (participants: Participant[]) =>
+export const validAges = (participants: Participant[]) =>
   participants.map((participant) => parseAge(participant.age)).filter((age) => age !== null)
 
 export const orderTotal = (participants: Participant[]) =>
   validAges(participants).reduce((sum, age) => sum + ticketPrice(age), 0)
 
-const normalizeName = (name: string) => name.trim().replace(/\s+/g, ' ')
+export const normalizeName = (name: string) => {
+  const value = name.trim().replace(/\s+/g, ' ')
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
 
 export const validateParticipant = (participant: Participant): ParticipantErrors => {
   const errors: ParticipantErrors = {}
   const name = normalizeName(participant.name)
   if (!name) errors.name = 'Введите имя'
   else if (name.length > MAX_NAME_LENGTH) errors.name = `Имя не длиннее ${MAX_NAME_LENGTH} символов`
-  if (parseAge(participant.age) === null) errors.age = `Введите возраст — целое число от 0 до ${MAX_AGE}`
+  if (parseAge(participant.age) === null) errors.age = `Число от 0 до ${MAX_AGE}`
   return errors
 }
 

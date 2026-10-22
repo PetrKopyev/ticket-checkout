@@ -37,7 +37,7 @@ describe('ticketType', () => {
 describe('parseAge', () => {
   it.each(['', '  ', '-1', 'abc', '10.5', '121'])('«%s» — не возраст', (age) => {
     expect(parseAge(age)).toBeNull()
-    expect(validateParticipant(person(age)).age).toBe('Введите возраст — целое число от 0 до 120')
+    expect(validateParticipant(person(age)).age).toBe('Число от 0 до 120')
   })
 
   it('целые 0–120 с пробелами по краям', () => {
@@ -80,6 +80,11 @@ describe('validateEmail', () => {
 })
 
 describe('buildOrder', () => {
+  it('делает первую букву имени заглавной после нормализации пробелов', () => {
+    const participant = person('30', '  анна   мария ')
+    expect(buildOrder([participant], 'a@b.ru').participants[0].name).toBe('Анна мария')
+  })
+
   it('обрезает пробелы, схлопывает пробелы в имени и сохраняет id', () => {
     const participant = person(' 30 ', '  Анна   Мария ')
     expect(buildOrder([participant], ' a@b.ru ')).toEqual({

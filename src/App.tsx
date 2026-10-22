@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { demoReset, demoTakeSeats, getSeats, subscribe } from './api.mock'
 import type { ConfirmResult } from './api.mock'
-import type { Participant } from './types'
+import type { Participant, Step } from './types'
 import { buildOrder } from './rules'
 import ParticipantsStep from './components/ParticipantsStep'
 import ReviewStep from './components/ReviewStep'
@@ -11,7 +11,7 @@ import StepIndicator from './components/StepIndicator'
 import { secondaryButtonClass } from './components/ui'
 
 const App = () => {
-  const [step, setStep] = useState<'participants' | 'review' | 'result'>('participants')
+  const [step, setStep] = useState<Step>('participants')
   const [participants, setParticipants] = useState<Participant[]>([{ id: 1, name: '', age: '' }])
   const [email, setEmail] = useState('')
   const [result, setResult] = useState<ConfirmResult | null>(null)
@@ -48,7 +48,7 @@ const App = () => {
 
   return (
     <main className="min-h-screen text-ink">
-      <div className="mx-auto min-w-0 max-w-5xl px-4 pt-6 pb-40 md:pb-6">
+      <div className="mx-auto min-w-0 max-w-5xl px-4 pt-6 pb-6">
         <EventHeader />
         <StepIndicator step={step} failed={step === 'result' && result?.ok === false} />
         <div ref={stepContent}>

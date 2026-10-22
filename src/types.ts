@@ -1,3 +1,5 @@
+export type Step = 'participants' | 'review' | 'result'
+
 export type Participant = {
   id: number
   name: string

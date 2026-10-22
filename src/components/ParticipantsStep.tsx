@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { plural } from '../format'
 import {
   MAX_PARTICIPANTS,
   NO_SEATS_MESSAGE,
@@ -20,7 +21,6 @@ import {
   dangerChipClass,
   formatPrice,
   inputClass,
-  plural,
   primaryButtonClass,
   secondaryButtonClass,
 } from './ui'
@@ -46,13 +46,15 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
 
   return (
     <section aria-labelledby={headingId} className={cardClass}>
-      <h3 id={headingId} className="mb-4 text-sm font-semibold text-ink-muted">Участник {index + 1}</h3>
+      <h3 id={headingId} className="mb-4 text-sm font-semibold text-ink-muted">
+        Участник {index + 1}
+      </h3>
       <div className={[
         'grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4',
-        'md:grid-cols-[minmax(0,1fr)_8rem_10rem_auto]',
+        'md:grid-cols-[minmax(0,1fr)_8rem_10rem_auto] md:gap-y-0',
       ].join(' ')}>
-        <div className="min-w-0">
-          <label htmlFor={nameId} className="text-sm font-medium">Имя</label>
+        <div className="min-w-0 md:contents">
+          <label htmlFor={nameId} className="text-sm font-medium md:col-start-1 md:row-start-1">Имя</label>
           <input
             id={nameId}
             type="text"
@@ -62,12 +64,14 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
             onBlur={() => onTouch(nameId)}
             aria-invalid={Boolean(nameError)}
             aria-describedby={nameError ? `${nameId}-error` : undefined}
-            className={inputClass}
+            className={`${inputClass} md:col-start-1 md:row-start-2`}
           />
-          {nameError && <p id={`${nameId}-error`} className="mt-2 text-sm text-red">{nameError}</p>}
+          <p id={`${nameId}-error`} className="mt-2 min-h-5 text-sm text-red md:col-start-1 md:row-start-3">
+            {nameError}
+          </p>
         </div>
-        <div className="min-w-0">
-          <label htmlFor={ageId} className="text-sm font-medium">Возраст</label>
+        <div className="min-w-0 md:contents">
+          <label htmlFor={ageId} className="text-sm font-medium md:col-start-2 md:row-start-1">Возраст</label>
           <input
             id={ageId}
             type="text"
@@ -77,12 +81,20 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
             onBlur={() => onTouch(ageId)}
             aria-invalid={Boolean(ageError)}
             aria-describedby={ageError ? `${ageId}-error` : undefined}
-            className={inputClass}
+            className={`${inputClass} md:col-start-2 md:row-start-2`}
           />
-          {ageError && <p id={`${ageId}-error`} className="mt-2 text-sm text-red">{ageError}</p>}
+          <p id={`${ageId}-error`} className="mt-2 min-h-5 text-sm text-red md:col-start-2 md:row-start-3">
+            {ageError}
+          </p>
         </div>
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 md:contents">
-          <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2 self-start md:mt-7">
+        <div className={[
+          'flex min-w-0 flex-wrap items-start justify-between gap-3 md:contents',
+          age === null && !canRemove ? 'max-md:hidden' : '',
+        ].join(' ')}>
+          <div className={[
+            'flex min-h-11 min-w-0 flex-wrap items-center gap-2 self-start',
+            'md:col-start-3 md:row-start-2 md:self-end',
+          ].join(' ')}>
             {age !== null && (
               <>
                 <span className={chipClass}>{ticketType(age)}</span>
@@ -94,7 +106,10 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
             {age === null && !ageError && <p className="text-sm text-ink-muted">Укажите возраст</p>}
           </div>
           {canRemove && (
-            <div className="flex min-h-11 min-w-0 items-center self-start md:mt-7">
+            <div className={[
+              'flex min-h-11 min-w-0 items-center self-start',
+              'md:col-start-4 md:row-start-2 md:self-end',
+            ].join(' ')}>
               <button
                 type="button"
                 onClick={onRemove}
@@ -124,6 +139,8 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
   const addButton = useRef<HTMLButtonElement>(null)
   const shouldFocusAfterRemove = useRef(false)
   const orderError = submitted && seats > 0 ? validateOrder(participants, seats) : undefined
+  const fewSeats = seats <= 3
+  const seatsLabel = `Осталось ${fewSeats ? 'всего ' : ''}${seats} ${plural(seats, 'место', 'места', 'мест')}`
 
   useEffect(() => {
     if (!shouldFocusAfterRemove.current) return
@@ -156,11 +173,7 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
         <div>
           <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Участники</h2>
           <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
-            <p className={seats <= 3 ? dangerChipClass : chipClass}>
-              {seats === 0 ? 'Мест нет' : (
-                `Осталось ${seats <= 3 ? 'всего ' : ''}${seats} ${plural(seats, 'место', 'места', 'мест')}`
-              )}
-            </p>
+            {seats > 0 && <p className={fewSeats ? dangerChipClass : chipClass}>{seatsLabel}</p>}
             <p className="text-sm text-ink-muted">
               Участников: {participants.length} из {MAX_PARTICIPANTS}
             </p>
@@ -188,13 +201,11 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
           </button>
         )}
         {orderError && <p role="alert" className={alertClass}>{orderError}</p>}
-        <div>
-          <SubmitBar total={orderTotal(participants)}>
-            <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
-              Продолжить
-            </button>
-          </SubmitBar>
-        </div>
+        <SubmitBar total={orderTotal(participants)}>
+          <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
+            Продолжить
+          </button>
+        </SubmitBar>
       </form>
       <aside className={`${cardClass} lg:sticky lg:top-6`}>
         <OrderSummary participants={participants} compact />

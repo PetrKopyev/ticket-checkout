@@ -15,16 +15,29 @@
   --color-violet-soft: #c8b5ff;
   --color-green: #72e6b1;
   --color-red: #ff8585;
+  --color-brand-deep: #5f4294;
+  --color-brand-mid: #6d4cab;
+  --color-brand-light: #7c59c2;
+  --color-shadow: #0000005c;
   --font-sans: 'Manrope Variable', sans-serif;
-  --background-image-brand-gradient: linear-gradient(120deg, #5f4294, #6d4cab 28%, #7c59c2 52%, #6d4cab 76%, #5f4294);
-  --shadow-card: 0 24px 64px #0000005c;
-  --shadow-button: 0 10px 28px #5f42943d;
+  --radius-control: 18px;
+  --background-image-brand-gradient: linear-gradient(
+    120deg,
+    var(--color-brand-deep),
+    var(--color-brand-mid) 28%,
+    var(--color-brand-light) 52%,
+    var(--color-brand-mid) 76%,
+    var(--color-brand-deep)
+  );
+  --shadow-card: 0 24px 64px var(--color-shadow);
+  --shadow-button: 0 10px 28px color-mix(in srgb, var(--color-brand-deep) 24%, transparent);
 }
 
 @layer base {
   @media (width < 48rem) {
     html {
-      scroll-padding-bottom: 7rem;
+      /* Чтобы поле в фокусе не пряталось под липким баром. */
+      scroll-padding-bottom: 9rem;
     }
   }
 
@@ -35,7 +48,11 @@
   body {
     margin: 0;
     background-color: var(--color-bg);
-    background-image: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--color-violet) 12%, transparent), transparent 65%);
+    background-image: radial-gradient(
+      ellipse at 50% 0%,
+      color-mix(in srgb, var(--color-violet) 12%, transparent),
+      transparent 65%
+    );
     background-attachment: fixed;
     background-repeat: no-repeat;
     color: var(--color-ink);

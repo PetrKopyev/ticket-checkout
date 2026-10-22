@@ -4,13 +4,19 @@ import type { Order } from '../types'
 import OrderSummary from './OrderSummary'
 import { cardClass, circleIconClass, primaryButtonClass, secondaryButtonClass } from './ui'
 
+const ErrorIcon = () => (
+  <div aria-hidden="true" className={`${circleIconClass} mb-4 bg-red/15 text-xl font-bold text-red`}>
+    !
+  </div>
+)
+
 const ResultStep = ({ result, order, onEdit, onReset }: {
   result: ConfirmResult
   order: Order
   onEdit: () => void
   onReset: () => void
 }) => (
-  <div className="min-w-0 max-w-2xl space-y-6">
+  <div className="mx-auto min-w-0 max-w-2xl space-y-6">
     {result.ok ? (
       <>
         <section className={cardClass}>
@@ -23,7 +29,7 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
             Заказ оформлен
           </h2>
           <p className="mt-4 text-sm text-ink-muted">Номер заказа</p>
-          <p className="mt-1 break-all font-mono text-3xl tracking-wider tabular-nums">{result.orderId}</p>
+          <p className="mt-1 break-all font-mono text-3xl tracking-wider">{result.orderId}</p>
           <p className="mt-5 break-words font-semibold">{EVENT.title}</p>
           <p className="mt-2 break-words text-sm text-ink-muted">{EVENT.date} · {EVENT.place}</p>
           <div className="mt-6 border-t border-dashed border-line-strong pt-6">
@@ -36,9 +42,7 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
     ) : result.reason === 'SOLD_OUT' ? (
       <>
         <section className={cardClass}>
-          <div aria-hidden="true" className={`${circleIconClass} mb-4 bg-red/15 text-xl font-bold text-red`}>
-            !
-          </div>
+          <ErrorIcon />
           <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">
             Места закончились
           </h2>
@@ -49,9 +53,7 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
     ) : (
       <>
         <section className={cardClass}>
-          <div aria-hidden="true" className={`${circleIconClass} mb-4 bg-red/15 text-xl font-bold text-red`}>
-            !
-          </div>
+          <ErrorIcon />
           <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">
             Не хватает мест
           </h2>
