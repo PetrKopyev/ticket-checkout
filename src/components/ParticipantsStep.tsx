@@ -78,7 +78,7 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
                   <button type="button" onClick={() => {
                     shouldFocusAfterRemove.current = true
                     onRemove(participant.id)
-                  }} className={secondaryButtonClass}>Удалить</button>
+                  }} aria-label={`Удалить участника ${index + 1}`} className={secondaryButtonClass}>Удалить</button>
                 )}
               </div>
               <div className="space-y-4">
