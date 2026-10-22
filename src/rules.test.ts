@@ -1,0 +1,99 @@
+import { describe, expect, it } from 'vitest'
+import {
+  orderTotal,
+  parseAge,
+  ticketPrice,
+  validateEmail,
+  validateOrder,
+  validateParticipant,
+  validateParticipants,
+} from './rules'
+import type { Participant } from './types'
+
+const person = (age: string, name = 'Аня'): Participant => ({ id: Number(age) || 0, name, age })
+
+const ESCORT_ERROR = 'Детям до 14 лет нужен участник от 18 лет в заказе'
+const COUNT_ERROR = 'В заказе от 1 до 4 участников'
+
+describe('ticketPrice', () => {
+  it('детский билет до 14 лет', () => {
+    expect(ticketPrice(13)).toBe(1000)
+    expect(ticketPrice(14)).toBe(2000)
+    expect(ticketPrice(17)).toBe(2000)
+  })
+})
+
+describe('parseAge', () => {
+  it.each(['', '  ', '-1', 'abc', '10.5', '121'])('«%s» — не возраст', (age) => {
+    expect(parseAge(age)).toBeNull()
+    expect(validateParticipant(person(age)).age).toBe('Введите возраст — целое число от 0 до 120')
+  })
+
+  it('целые 0–120 с пробелами по краям', () => {
+    expect(parseAge(' 30 ')).toBe(30)
+    expect(parseAge('0')).toBe(0)
+    expect(parseAge('120')).toBe(120)
+  })
+})
+
+describe('validateParticipant', () => {
+  it.each(['', '   '])('пустое имя «%s»', (name) => {
+    expect(validateParticipant(person('30', name)).name).toBe('Введите имя')
+  })
+
+  it('имя длиннее 60 символов', () => {
+    expect(validateParticipant(person('30', 'я'.repeat(61))).name).toBe('Имя не длиннее 60 символов')
+    expect(validateParticipant(person('30', 'я'.repeat(60)))).toEqual({})
+  })
+})
+
+describe('validateParticipants', () => {
+  it('true только если все без ошибок', () => {
+    expect(validateParticipants([person('30'), person('5')])).toBe(true)
+    expect(validateParticipants([person('30'), person('', 'Петя')])).toBe(false)
+  })
+})
+
+describe('validateEmail', () => {
+  it.each(['a@b', 'a b@c.d'])('«%s» — неверный', (email) => {
+    expect(validateEmail(email)).toBe('Проверьте email')
+  })
+
+  it('пустой и верный', () => {
+    expect(validateEmail('')).toBe('Введите email')
+    expect(validateEmail(' anya@mail.ru ')).toBeUndefined()
+  })
+})
+
+describe('validateOrder', () => {
+  it('ребёнку 13 нужен участник от 18, 17 лет не считается', () => {
+    expect(validateOrder([person('13'), person('17')], 10)).toBe(ESCORT_ERROR)
+    expect(validateOrder([person('13')], 10)).toBe(ESCORT_ERROR)
+  })
+
+  it('13 + 18 — можно, итог 3000', () => {
+    const participants = [person('13'), person('18')]
+    expect(validateOrder(participants, 10)).toBeUndefined()
+    expect(orderTotal(participants)).toBe(3000)
+  })
+
+  it('один взрослый на нескольких детей', () => {
+    expect(validateOrder([person('30'), person('5'), person('7'), person('10')], 10)).toBeUndefined()
+  })
+
+  it('места', () => {
+    expect(validateOrder([person('30')], 0)).toBe('Мест нет')
+    expect(validateOrder([person('30'), person('31'), person('32')], 2)).toBe('Доступно мест: 2')
+  })
+
+  it('от 1 до 4 участников', () => {
+    expect(validateOrder([], 10)).toBe(COUNT_ERROR)
+    expect(validateOrder(['20', '21', '22', '23', '24'].map((age) => person(age)), 10)).toBe(COUNT_ERROR)
+  })
+})
+
+describe('orderTotal', () => {
+  it('невалидные возрасты пропускаются', () => {
+    expect(orderTotal([person('30'), person('abc')])).toBe(2000)
+  })
+})
