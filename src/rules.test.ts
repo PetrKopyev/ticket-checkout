@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildOrder,
   orderTotal,
   parseAge,
   ticketPrice,
@@ -7,7 +8,6 @@ import {
   validateEmail,
   validateOrder,
   validateParticipant,
-  validateParticipants,
 } from './rules'
 import type { Participant } from './types'
 
@@ -58,21 +58,30 @@ describe('validateParticipant', () => {
   })
 })
 
-describe('validateParticipants', () => {
-  it('true только если все без ошибок', () => {
-    expect(validateParticipants([person('30'), person('5')])).toBe(true)
-    expect(validateParticipants([person('30'), person('', 'Петя')])).toBe(false)
-  })
-})
-
 describe('validateEmail', () => {
-  it.each(['a@b', 'a b@c.d'])('«%s» — неверный', (email) => {
+  it.each(['a@b', 'a b@c.d', 'a@b..c', 'a@.b.c', 'a@b.c.'])('«%s» — неверный', (email) => {
     expect(validateEmail(email)).toBe('Проверьте email')
   })
 
   it('пустой и верный', () => {
     expect(validateEmail('')).toBe('Введите email')
     expect(validateEmail(' anya@mail.ru ')).toBeUndefined()
+    expect(validateEmail('a.b@mail.co.uk')).toBeUndefined()
+  })
+
+  it('email не длиннее 254 символов', () => {
+    expect(validateEmail('a'.repeat(249) + '@b.ru')).toBeUndefined()
+    expect(validateEmail('a'.repeat(250) + '@b.ru')).toBe('Email не длиннее 254 символов')
+  })
+})
+
+describe('buildOrder', () => {
+  it('обрезает пробелы, схлопывает пробелы в имени и сохраняет id и возраст', () => {
+    const participant = person(' 30 ', '  Анна   Мария ')
+    expect(buildOrder([participant], ' a@b.ru ')).toEqual({
+      participants: [{ id: participant.id, name: 'Анна Мария', age: ' 30 ' }],
+      email: 'a@b.ru',
+    })
   })
 })
 

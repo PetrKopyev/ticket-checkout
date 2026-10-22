@@ -1,4 +1,4 @@
-import type { Participant } from './types'
+import type { Order, Participant } from './types'
 
 export const ADULT_AGE = 18
 export const CHILD_LIMIT = 14
@@ -9,7 +9,8 @@ export const NO_SEATS_MESSAGE = 'Мест нет'
 
 const MAX_AGE = 120
 const MAX_NAME_LENGTH = 60
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const MAX_EMAIL_LENGTH = 254
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/
 
 export type ParticipantErrors = { name?: string; age?: string }
 
@@ -20,7 +21,7 @@ export const parseAge = (age: string): number | null => {
   return n <= MAX_AGE ? n : null
 }
 
-export const ticketPrice = (age: number) => (age < CHILD_LIMIT ? CHILD_PRICE : FULL_PRICE)
+export const ticketPrice = (age: number) => age < CHILD_LIMIT ? CHILD_PRICE : FULL_PRICE
 export const ticketType = (age: number) => age < CHILD_LIMIT ? 'Детский' : 'Полный'
 
 const validAges = (participants: Participant[]) =>
@@ -38,13 +39,14 @@ export const validateParticipant = (p: Participant): ParticipantErrors => {
   return errors
 }
 
-export const validateEmail = (email: string) => {
+export const validateEmail = (email: string): string | undefined => {
   const value = email.trim()
   if (!value) return 'Введите email'
+  if (value.length > MAX_EMAIL_LENGTH) return `Email не длиннее ${MAX_EMAIL_LENGTH} символов`
   if (!EMAIL_RE.test(value)) return 'Проверьте email'
 }
 
-export const validateOrder = (participants: Participant[], seats: number) => {
+export const validateOrder = (participants: Participant[], seats: number): string | undefined => {
   const count = participants.length
   if (count < 1 || count > MAX_PARTICIPANTS) return `В заказе от 1 до ${MAX_PARTICIPANTS} участников`
   if (count > seats) return seats === 0 ? NO_SEATS_MESSAGE : `Доступно мест: ${seats}`
@@ -54,5 +56,10 @@ export const validateOrder = (participants: Participant[], seats: number) => {
   if (hasChild && !hasAdult) return `Детям до ${CHILD_LIMIT} лет нужен участник от ${ADULT_AGE} лет в заказе`
 }
 
-export const validateParticipants = (participants: Participant[]) =>
-  participants.every((p) => Object.keys(validateParticipant(p)).length === 0)
+export const buildOrder = (participants: Participant[], email: string): Order => ({
+  participants: participants.map((participant) => ({
+    ...participant,
+    name: participant.name.trim().replace(/\s+/g, ' '),
+  })),
+  email: email.trim(),
+})

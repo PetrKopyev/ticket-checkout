@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { demoReset, demoTakeSeats, getSeats, subscribe } from './api.mock'
 import type { ConfirmResult } from './api.mock'
 import type { Participant } from './types'
+import { buildOrder } from './rules'
 import ParticipantsStep from './components/ParticipantsStep'
 import ReviewStep from './components/ReviewStep'
 import ResultStep from './components/ResultStep'
@@ -14,19 +15,11 @@ const App = () => {
   const [result, setResult] = useState<ConfirmResult | null>(null)
   const nextId = useRef(2)
   const stepContent = useRef<HTMLDivElement>(null)
-  const firstRender = useRef(true)
   const previousStep = useRef(step)
   const seats = useSyncExternalStore(subscribe, getSeats)
-  const order = {
-    participants: participants.map((participant) => ({ ...participant, name: participant.name.trim() })),
-    email: email.trim(),
-  }
 
   useEffect(() => {
-    if (firstRender.current || previousStep.current === step) {
-      firstRender.current = false
-      return
-    }
+    if (previousStep.current === step) return
     previousStep.current = step
     stepContent.current?.querySelector('h2')?.focus()
   }, [step])
@@ -34,6 +27,14 @@ const App = () => {
   const addParticipant = () => {
     const participant = { id: nextId.current++, name: '', age: '' }
     setParticipants((previous) => [...previous, participant])
+  }
+
+  const updateParticipant = (participant: Participant) => {
+    setParticipants((previous) => previous.map((item) => item.id === participant.id ? participant : item))
+  }
+
+  const removeParticipant = (id: number) => {
+    setParticipants((previous) => previous.filter((participant) => participant.id !== id))
   }
 
   const reset = () => {
@@ -56,31 +57,52 @@ const App = () => {
         </header>
         <div ref={stepContent}>
           {step === 'participants' && (
-            <ParticipantsStep participants={participants} seats={seats}
-              onChange={(participant) => setParticipants((previous) => previous.map((item) => item.id === participant.id ? participant : item))}
+            <ParticipantsStep
+              participants={participants}
+              seats={seats}
+              onChange={updateParticipant}
               onAdd={addParticipant}
-              onRemove={(id) => setParticipants((previous) => previous.filter((participant) => participant.id !== id))}
-              onContinue={() => setStep('review')} />
+              onRemove={removeParticipant}
+              onContinue={() => setStep('review')}
+            />
           )}
           {step === 'review' && (
-            <ReviewStep order={order} email={email} onEmailChange={setEmail}
+            <ReviewStep
+              participants={participants}
+              email={email}
+              onEmailChange={setEmail}
               onBack={() => setStep('participants')}
               onResult={(confirmation) => {
                 setResult(confirmation)
                 setStep('result')
-              }} />
+              }}
+            />
           )}
           {step === 'result' && result && (
-            <ResultStep result={result} order={order} onEdit={() => setStep('participants')} onReset={reset} />
+            <ResultStep
+              result={result}
+              order={buildOrder(participants, email)}
+              onEdit={() => setStep('participants')}
+              onReset={reset}
+            />
           )}
         </div>
-        <section aria-label="Демо" className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5">
-          <p className="text-sm text-ink-muted">инструмент для демонстрации</p>
-          <p className="mt-2 text-sm text-ink-muted">Осталось мест: {seats}</p>
+        <section
+          aria-label="Демо"
+          className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5"
+        >
+          <p className="text-sm text-ink-muted">Инструмент для демонстрации</p>
+          <p className="mt-2 text-sm text-ink-muted">Мест сейчас: {seats}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" onClick={() => demoTakeSeats(0)} className={secondaryButtonClass}>Демо: кто-то купил билеты</button>
-            <button type="button" onClick={() => demoTakeSeats(1)} className={secondaryButtonClass}>Демо: осталось 1 место</button>
-            <button type="button" onClick={demoReset} className={secondaryButtonClass}>Сбросить демо</button>
+            <button type="button" onClick={() => demoTakeSeats(0)} className={secondaryButtonClass}>
+              Демо: кто-то купил билеты
+            </button>
+            <button type="button" onClick={() => demoTakeSeats(1)} className={secondaryButtonClass}>
+              Демо: осталось 1 место
+            </button>
+            <button type="button" onClick={demoReset} className={secondaryButtonClass}>
+              Сбросить демо
+            </button>
           </div>
         </section>
       </div>

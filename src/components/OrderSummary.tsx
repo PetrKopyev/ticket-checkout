@@ -12,17 +12,23 @@ const OrderSummary = ({ participants }: { participants: Participant[] }) => (
         return (
           <li key={participant.id} className="py-3 first:pt-0">
             <p className="font-medium break-words">{participant.name.trim() || `Участник ${index + 1}`}</p>
-            <p className={`mt-2 ${chipClass}`}>
-              {age === null ? '—' : `Возраст: ${age} · ${ticketType(age)}`}
-            </p>
-            <p className="mt-1 text-sm font-medium">{age === null ? '—' : formatPrice(ticketPrice(age))}</p>
+            {age === null ? (
+              <p className="mt-2 text-sm text-ink-muted">Укажите возраст</p>
+            ) : (
+              <>
+                <p className={`mt-2 ${chipClass}`}>Возраст: {age} · {ticketType(age)}</p>
+                <p className="mt-1 text-sm font-medium">{formatPrice(ticketPrice(age))}</p>
+              </>
+            )}
           </li>
         )
       })}
     </ul>
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-xl font-extrabold">
-      <span>Итого</span>
-      <span className="text-2xl text-violet-soft">{formatPrice(orderTotal(participants))}</span>
+    <div className="mt-4 flex flex-wrap items-baseline justify-between gap-2 border-t border-line pt-4">
+      <span className="text-xl font-extrabold">Итого</span>
+      <span className="text-2xl font-extrabold text-violet-soft">
+        {formatPrice(orderTotal(participants))}
+      </span>
     </div>
   </section>
 )

@@ -5,17 +5,16 @@
   --color-bg-soft: #151517;
   --color-card: #161617;
   --color-surface-muted: #202022;
-  --color-surface-active: #29292c;
   --color-line: #303034;
   --color-line-strong: #38383d;
   --color-ink: #fafafa;
+  --color-ink-soft: #ded9e2;
   --color-ink-muted: #a1a1a6;
   --color-violet: #8751ff;
   --color-violet-bright: #a383ff;
   --color-violet-soft: #c8b5ff;
   --color-green: #72e6b1;
   --color-red: #ff8585;
-  --color-orange: #ffb77c;
   --font-sans: 'Manrope Variable', sans-serif;
   --background-image-brand-gradient: linear-gradient(120deg, #5f4294, #6d4cab 28%, #7c59c2 52%, #6d4cab 76%, #5f4294);
   --shadow-card: 0 24px 64px #0000005c;
