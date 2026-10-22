@@ -1,18 +1,18 @@
 import { orderTotal, parseAge, ticketPrice, ticketType } from '../rules'
 import type { Participant } from '../types'
-import { formatPrice } from './ui'
+import { cardClass, chipClass, formatPrice } from './ui'
 
 const OrderSummary = ({ participants }: { participants: Participant[] }) => (
-  <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="summary-heading">
-    <h2 id="summary-heading" className="text-lg font-semibold">Ваш заказ</h2>
-    <ul className="mt-4 divide-y divide-slate-100">
+  <section className={cardClass} aria-labelledby="summary-heading">
+    <h2 id="summary-heading" className="text-lg">Ваш заказ</h2>
+    <ul className="mt-4 divide-y divide-line">
       {participants.map((participant, index) => {
         const age = parseAge(participant.age)
 
         return (
           <li key={participant.id} className="py-3 first:pt-0">
             <p className="font-medium break-words">{participant.name.trim() || `Участник ${index + 1}`}</p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className={`mt-2 ${chipClass}`}>
               {age === null ? '—' : `Возраст: ${age} · ${ticketType(age)}`}
             </p>
             <p className="mt-1 text-sm font-medium">{age === null ? '—' : formatPrice(ticketPrice(age))}</p>
@@ -20,9 +20,9 @@ const OrderSummary = ({ participants }: { participants: Participant[] }) => (
         )
       })}
     </ul>
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4 font-semibold">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-xl font-extrabold">
       <span>Итого</span>
-      <span className="text-xl">{formatPrice(orderTotal(participants))}</span>
+      <span className="text-2xl text-violet-soft">{formatPrice(orderTotal(participants))}</span>
     </div>
   </section>
 )

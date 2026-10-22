@@ -44,12 +44,15 @@ const App = () => {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <main className="min-h-screen text-ink">
       <div className="mx-auto max-w-4xl px-4 py-6">
-        <header className="mb-8 border-b border-slate-200 pb-6">
-          <p className="mb-2 text-sm font-medium text-indigo-600">Покупка билетов</p>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Фестиваль «Огни города»</h1>
-          <p className="mt-3 text-slate-600">14 июня, 19:00</p>
+        <header className="mb-8 border-b border-line pb-6">
+          <p className="mb-2 text-sm font-medium text-violet-soft">Покупка билетов</p>
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="" width={32} height={32} className="shrink-0" />
+            <h1 className="min-w-0 text-2xl sm:text-3xl">Фестиваль «Огни города»</h1>
+          </div>
+          <p className="mt-3 text-ink-muted">14 июня, 19:00</p>
         </header>
         <div ref={stepContent}>
           {step === 'participants' && (
@@ -71,9 +74,9 @@ const App = () => {
             <ResultStep result={result} order={order} onEdit={() => setStep('participants')} onReset={reset} />
           )}
         </div>
-        <section aria-label="Демо" className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-100 p-5">
-          <p className="text-sm text-slate-500">инструмент для демонстрации</p>
-          <p className="mt-2 text-sm text-slate-600">Осталось мест: {seats}</p>
+        <section aria-label="Демо" className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5">
+          <p className="text-sm text-ink-muted">инструмент для демонстрации</p>
+          <p className="mt-2 text-sm text-ink-muted">Осталось мест: {seats}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={() => demoTakeSeats(0)} className={secondaryButtonClass}>Демо: кто-то купил билеты</button>
             <button type="button" onClick={() => demoTakeSeats(1)} className={secondaryButtonClass}>Демо: осталось 1 место</button>

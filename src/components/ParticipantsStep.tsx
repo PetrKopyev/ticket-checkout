@@ -13,7 +13,7 @@ import {
 } from '../rules'
 import type { Participant } from '../types'
 import OrderSummary from './OrderSummary'
-import { formatPrice, inputClass, primaryButtonClass, secondaryButtonClass } from './ui'
+import { cardClass, chipClass, formatPrice, inputClass, primaryButtonClass, secondaryButtonClass } from './ui'
 
 const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onContinue }: {
   participants: Participant[]
@@ -56,11 +56,11 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
         if (!validateOrder(participants, seats)) onContinue()
       }} className="min-w-0 space-y-5">
         <div>
-          <h2 tabIndex={-1} className="text-xl font-semibold outline-none">Участники</h2>
-          <p className="mt-1 text-slate-600">Осталось мест: {seats}</p>
+          <h2 tabIndex={-1} className="text-xl outline-none">Участники</h2>
+          <p className="mt-1 text-ink-muted">Осталось мест: {seats}</p>
         </div>
         {seats === 0 && (
-          <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 font-semibold text-red-700">{NO_SEATS_MESSAGE}</p>
+          <p role="alert" className="rounded-3xl border border-red/40 bg-red/10 p-4 font-semibold text-red">{NO_SEATS_MESSAGE}</p>
         )}
         {participants.map((participant, index) => {
           const errors = validateParticipant(participant)
@@ -71,9 +71,9 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
           const age = parseAge(participant.age)
 
           return (
-            <section key={participant.id} aria-labelledby={`participant-${participant.id}-heading`} className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section key={participant.id} aria-labelledby={`participant-${participant.id}-heading`} className={cardClass}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h3 id={`participant-${participant.id}-heading`} className="font-semibold">Участник {index + 1}</h3>
+                <h3 id={`participant-${participant.id}-heading`}>Участник {index + 1}</h3>
                 {participants.length > 1 && (
                   <button type="button" onClick={() => {
                     shouldFocusAfterRemove.current = true
@@ -88,7 +88,7 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
                     onChange={(event) => onChange({ ...participant, name: event.target.value })}
                     onBlur={() => setTouched((previous) => ({ ...previous, [`${participant.id}-name`]: true }))}
                     aria-invalid={Boolean(nameError)} aria-describedby={nameError ? `${nameId}-error` : undefined} className={inputClass} />
-                  {nameError && <p id={`${nameId}-error`} className="mt-2 text-sm text-red-600">{nameError}</p>}
+                  {nameError && <p id={`${nameId}-error`} className="mt-2 text-sm text-red">{nameError}</p>}
                 </div>
                 <div>
                   <label htmlFor={ageId} className="text-sm font-medium">Возраст</label>
@@ -96,10 +96,10 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
                     onChange={(event) => onChange({ ...participant, age: event.target.value })}
                     onBlur={() => setTouched((previous) => ({ ...previous, [`${participant.id}-age`]: true }))}
                     aria-invalid={Boolean(ageError)} aria-describedby={ageError ? `${ageId}-error` : undefined} className={inputClass} />
-                  {ageError && <p id={`${ageId}-error`} className="mt-2 text-sm text-red-600">{ageError}</p>}
+                  {ageError && <p id={`${ageId}-error`} className="mt-2 text-sm text-red">{ageError}</p>}
                 </div>
               </div>
-              <p className="mt-4 text-sm font-medium text-slate-600">
+              <p className={`mt-4 ${chipClass}`}>
                 {age === null ? '—' : `${ticketType(age)} · ${formatPrice(ticketPrice(age))}`}
               </p>
             </section>
@@ -108,10 +108,10 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
         {participants.length < Math.min(MAX_PARTICIPANTS, seats) && (
           <button ref={addButton} type="button" onClick={onAdd} className={secondaryButtonClass}>Добавить участника</button>
         )}
-        <p className="text-sm leading-6 text-slate-500">
+        <p className="text-sm leading-6 text-ink-muted">
           Детям до {CHILD_LIMIT} лет билет за {formatPrice(CHILD_PRICE)}; в заказе с ребёнком должен быть участник от {ADULT_AGE} лет
         </p>
-        {orderError && <p role="alert" className="text-sm text-red-600">{orderError}</p>}
+        {orderError && <p role="alert" className="text-sm text-red">{orderError}</p>}
         <button type="submit" className={primaryButtonClass}>Продолжить</button>
       </form>
       <aside className="min-w-0 md:sticky md:top-6">

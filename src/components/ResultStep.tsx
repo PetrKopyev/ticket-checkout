@@ -1,7 +1,7 @@
 import type { ConfirmResult } from '../api.mock'
 import type { Order } from '../types'
 import OrderSummary from './OrderSummary'
-import { primaryButtonClass, secondaryButtonClass } from './ui'
+import { cardClass, primaryButtonClass, secondaryButtonClass } from './ui'
 
 const ResultStep = ({ result, order, onEdit, onReset }: {
   result: ConfirmResult
@@ -12,8 +12,8 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
   <div className="space-y-6">
     {result.ok ? (
       <>
-        <section role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
-          <h2 tabIndex={-1} className="text-xl font-semibold outline-none">Заказ оформлен</h2>
+        <section role="status" className={`${cardClass} border-green/40! bg-green/10! text-green`}>
+          <h2 tabIndex={-1} className="text-xl outline-none">Заказ оформлен</h2>
           <p className="mt-2">Номер заказа: <span className="font-semibold">{result.orderId}</span></p>
           <p className="mt-3 break-words">Билеты отправим на {order.email}</p>
         </section>
@@ -22,8 +22,8 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
       </>
     ) : (
       <>
-        <section role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-800">
-          <h2 tabIndex={-1} className="text-xl font-semibold outline-none">
+        <section role="alert" className={`${cardClass} border-red/40! bg-red/10! text-red`}>
+          <h2 tabIndex={-1} className="text-xl outline-none">
             {result.reason === 'SOLD_OUT' ? 'Места закончились' : `Осталось мест: ${result.seats}, а в заказе ${order.participants.length} — уберите лишних участников`}
           </h2>
         </section>
