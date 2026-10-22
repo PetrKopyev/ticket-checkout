@@ -4,6 +4,9 @@ export type ConfirmResult =
   | { ok: true; orderId: string }
   | { ok: false; reason: 'SOLD_OUT' | 'NOT_ENOUGH'; seats: number }
 
+export const CONFIRM_DELAY_MS = 400
+export const ORDER_ID_LENGTH = 6
+
 const INITIAL_SEATS = 10
 let seats = INITIAL_SEATS
 const listeners = new Set<() => void>()
@@ -15,7 +18,7 @@ const notify = (): void => {
 export const getSeats = (): number => seats
 
 export const confirmOrder = async (order: Order): Promise<ConfirmResult> => {
-  await new Promise<void>((resolve) => setTimeout(resolve, 400))
+  await new Promise<void>((resolve) => setTimeout(resolve, CONFIRM_DELAY_MS))
 
   if (seats === 0) {
     return { ok: false, reason: 'SOLD_OUT', seats }
@@ -30,7 +33,7 @@ export const confirmOrder = async (order: Order): Promise<ConfirmResult> => {
 
   const characters = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   const orderId = 'T-' + Array.from(
-    { length: 6 },
+    { length: ORDER_ID_LENGTH },
     () => characters[Math.floor(Math.random() * characters.length)],
   ).join('')
 

@@ -23,7 +23,10 @@ import {
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
+  stepHeadingClass,
 } from './ui'
+
+const LOW_SEATS = 3
 
 const fieldId = (id: number, field: 'name' | 'age') => `participant-${id}-${field}`
 
@@ -103,7 +106,6 @@ const ParticipantCard = ({ participant, index, canRemove, touched, onChange, onT
                 </span>
               </>
             )}
-            {age === null && !ageError && <p className="text-sm text-ink-muted">Укажите возраст</p>}
           </div>
           {canRemove && (
             <div className={[
@@ -135,11 +137,13 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
   onContinue: () => void
 }) => {
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [attempts, setAttempts] = useState(0)
   const addButton = useRef<HTMLButtonElement>(null)
+  const orderAlert = useRef<HTMLParagraphElement>(null)
   const shouldFocusAfterRemove = useRef(false)
-  const orderError = submitted && seats > 0 ? validateOrder(participants, seats) : undefined
-  const fewSeats = seats <= 3
+  const shouldFocusOrderError = useRef(false)
+  const orderError = attempts > 0 && seats > 0 ? validateOrder(participants, seats) : undefined
+  const fewSeats = seats <= LOW_SEATS
   const seatsLabel = `Осталось ${fewSeats ? 'всего ' : ''}${seats} ${plural(seats, 'место', 'места', 'мест')}`
 
   useEffect(() => {
@@ -149,9 +153,15 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
     target?.focus()
   }, [participants])
 
+  useEffect(() => {
+    if (!shouldFocusOrderError.current) return
+    shouldFocusOrderError.current = false
+    orderAlert.current?.focus()
+  }, [attempts])
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setSubmitted(true)
+    setAttempts((previous) => previous + 1)
     setTouched(Object.fromEntries(participants.flatMap((participant) => [
       [fieldId(participant.id, 'name'), true],
       [fieldId(participant.id, 'age'), true],
@@ -164,14 +174,15 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
         return
       }
     }
-    if (!validateOrder(participants, seats)) onContinue()
+    if (validateOrder(participants, seats)) shouldFocusOrderError.current = true
+    else onContinue()
   }
 
   return (
     <div className="grid min-w-0 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
       <form noValidate onSubmit={handleSubmit} className="min-w-0 space-y-5">
         <div>
-          <h2 data-step-heading tabIndex={-1} className="scroll-mt-6 text-xl outline-none">Участники</h2>
+          <h2 data-step-heading tabIndex={-1} className={stepHeadingClass}>Участники</h2>
           <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
             {seats > 0 && <p className={fewSeats ? dangerChipClass : chipClass}>{seatsLabel}</p>}
             <p className="text-sm text-ink-muted">
@@ -196,11 +207,15 @@ const ParticipantsStep = ({ participants, seats, onChange, onAdd, onRemove, onCo
           />
         ))}
         {participants.length < Math.min(MAX_PARTICIPANTS, seats) && (
-          <button ref={addButton} type="button" onClick={onAdd} className={secondaryButtonClass}>
+          <button ref={addButton} type="button" onClick={onAdd} className={`block ${secondaryButtonClass}`}>
             Добавить участника
           </button>
         )}
-        {orderError && <p role="alert" className={alertClass}>{orderError}</p>}
+        {orderError && (
+          <p ref={orderAlert} role="alert" tabIndex={-1} className={`${alertClass} outline-none`}>
+            {orderError}
+          </p>
+        )}
         <SubmitBar total={orderTotal(participants)}>
           <button type="submit" disabled={seats === 0} className={primaryButtonClass}>
             Продолжить

@@ -34,7 +34,7 @@
 }
 
 @layer base {
-  @media (width < 48rem) {
+  @media (width < 64rem) {
     html {
       /* Чтобы поле в фокусе не пряталось под липким баром. */
       scroll-padding-bottom: 9rem;

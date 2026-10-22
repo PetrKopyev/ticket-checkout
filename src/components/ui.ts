@@ -9,7 +9,7 @@ export const primaryButtonClass = [
   'min-h-12 max-w-full whitespace-normal break-words rounded-control px-5 py-2.5 font-bold',
   'bg-brand-gradient bg-size-[180%_100%] text-ink shadow-button',
   'transition-[background-position,transform] motion-reduce:transition-none',
-  'hover:bg-position-[100%_50%] hover:-translate-y-px',
+  'enabled:hover:bg-position-[100%_50%] motion-safe:enabled:hover:-translate-y-px',
   'disabled:cursor-not-allowed disabled:opacity-60',
   focusClass,
 ].join(' ')
@@ -27,6 +27,8 @@ export const inputClass = [
   'border border-line-strong bg-bg-soft text-ink aria-invalid:border-red',
   focusClass,
 ].join(' ')
+
+export const stepHeadingClass = 'scroll-mt-6 text-xl outline-none'
 
 export const cardClass = 'min-w-0 rounded-3xl border border-line bg-card p-5 shadow-card'
 

@@ -50,15 +50,17 @@ const OrderRow = ({ participant, index, compact }: {
   )
 }
 
-const OrderSummary = ({ participants, compact = false }: {
+const OrderSummary = ({ participants, compact = false, headingLevel = 2 }: {
   participants: Participant[]
   compact?: boolean
+  headingLevel?: 2 | 3
 }) => {
   const headingId = useId()
+  const Heading = headingLevel === 3 ? 'h3' : 'h2'
 
   return (
     <section aria-labelledby={headingId}>
-      <h2 id={headingId} className="text-lg">Ваш заказ</h2>
+      <Heading id={headingId} className="text-lg">Ваш заказ</Heading>
       <ul className="mt-4 divide-y divide-line">
         {participants.map((participant, index) => (
           <OrderRow key={participant.id} participant={participant} index={index} compact={compact} />

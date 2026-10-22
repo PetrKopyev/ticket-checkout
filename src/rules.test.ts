@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildOrder,
+  normalizeName,
   orderTotal,
   parseAge,
   ticketPrice,
   ticketType,
+  validAges,
   validateEmail,
   validateOrder,
   validateParticipant,
@@ -44,6 +46,22 @@ describe('parseAge', () => {
     expect(parseAge(' 30 ')).toBe(30)
     expect(parseAge('0')).toBe(0)
     expect(parseAge('120')).toBe(120)
+  })
+})
+
+describe('normalizeName', () => {
+  it('имя из одного пробела — пустое', () => {
+    expect(normalizeName(' ')).toBe('')
+  })
+
+  it('имя с цифры не меняется', () => {
+    expect(normalizeName('1аня')).toBe('1аня')
+  })
+})
+
+describe('validAges', () => {
+  it('возвращает только валидные возрасты числами', () => {
+    expect(validAges([person('30'), person('abc'), person(' 5 '), person('')])).toEqual([30, 5])
   })
 })
 

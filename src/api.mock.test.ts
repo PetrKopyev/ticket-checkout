@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { confirmOrder, demoReset, demoTakeSeats, getSeats, subscribe } from './api.mock'
+import {
+  CONFIRM_DELAY_MS,
+  ORDER_ID_LENGTH,
+  confirmOrder,
+  demoReset,
+  demoTakeSeats,
+  getSeats,
+  subscribe,
+} from './api.mock'
 import type { Order } from './types'
 
 const order = (count: number): Order => ({
@@ -9,7 +17,7 @@ const order = (count: number): Order => ({
 
 const confirm = async (count: number) => {
   const result = confirmOrder(order(count))
-  await vi.advanceTimersByTimeAsync(400)
+  await vi.advanceTimersByTimeAsync(CONFIRM_DELAY_MS)
   return result
 }
 
@@ -26,7 +34,7 @@ describe('confirmOrder', () => {
   it('оформляет заказ и уменьшает места', async () => {
     const result = await confirm(2)
     expect(result).toMatchObject({ ok: true })
-    if (result.ok) expect(result.orderId).toMatch(/^T-[0-9A-Z]{6}$/)
+    if (result.ok) expect(result.orderId).toMatch(new RegExp(`^T-[0-9A-Z]{${ORDER_ID_LENGTH}}$`))
     expect(getSeats()).toBe(8)
   })
 
@@ -52,7 +60,7 @@ describe('confirmOrder', () => {
   it('два заказа подряд: второй не влезает', async () => {
     const first = confirmOrder(order(6))
     const second = confirmOrder(order(6))
-    await vi.advanceTimersByTimeAsync(400)
+    await vi.advanceTimersByTimeAsync(CONFIRM_DELAY_MS)
     expect(await first).toMatchObject({ ok: true })
     expect(await second).toEqual({ ok: false, reason: 'NOT_ENOUGH', seats: 4 })
   })

@@ -1,4 +1,5 @@
 import type { Step } from '../types'
+import CheckIcon from './CheckIcon'
 
 const steps: { id: Step; label: string }[] = [
   { id: 'participants', label: 'Участники' },
@@ -29,7 +30,7 @@ const StepIndicator = ({ step, failed }: {
             circleClass = current ? 'border-green bg-green/15 text-green' : 'border-violet text-violet-soft'
             status = current ? 'успех' : 'пройден'
           } else if (current) {
-            circleClass = 'border-violet bg-violet text-ink'
+            circleClass = 'border-violet bg-brand-mid text-ink'
           }
 
           return (
@@ -49,11 +50,7 @@ const StepIndicator = ({ step, failed }: {
                   circleClass,
                 ].join(' ')}
               >
-                {error ? '!' : complete ? (
-                  <svg viewBox="0 0 24 24" className="size-4 fill-none stroke-current">
-                    <path d="m5 12 4 4L19 6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                ) : index + 1}
+                {error ? '!' : complete ? <CheckIcon className="size-4" /> : index + 1}
               </span>
               <span className={current ? 'min-w-0 break-words text-sm' : 'sr-only sm:not-sr-only sm:text-sm'}>
                 {item.label}
