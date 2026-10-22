@@ -1,3 +1,4 @@
+import { QRCodeSVG } from 'qrcode.react'
 import type { ConfirmResult } from '../api.mock'
 import { EVENT } from '../event'
 import type { Order } from '../types'
@@ -26,15 +27,26 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
   <div className="mx-auto min-w-0 max-w-2xl space-y-6">
     {result.ok ? (
       <>
-        <section className={cardClass}>
+        <section data-print-ticket className={cardClass}>
           <div className={`${circleIconClass} mb-4 bg-green/15 text-green`}>
             <CheckIcon className="size-6" />
           </div>
           <h2 data-step-heading tabIndex={-1} className={stepHeadingClass}>
             Заказ оформлен
           </h2>
-          <p className="mt-4 text-sm text-ink-muted">Номер заказа</p>
-          <p className="mt-1 break-all font-mono text-3xl tracking-wider">{result.orderId}</p>
+          <div className="mt-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm text-ink-muted">Номер заказа</p>
+              <p className="mt-1 break-all font-mono text-3xl tracking-wider">{result.orderId}</p>
+            </div>
+            <div
+              role="img"
+              aria-label={`QR-код заказа ${result.orderId}`}
+              className="w-fit shrink-0 rounded-2xl bg-white p-3 text-black"
+            >
+              <QRCodeSVG value={result.orderId} size={120} bgColor="#ffffff" fgColor="#000000" />
+            </div>
+          </div>
           <p className="mt-5 break-words font-semibold">{EVENT.title}</p>
           <p className="mt-2 break-words text-sm text-ink-muted">{EVENT.date} · {EVENT.place}</p>
           <div className="mt-6 border-t border-dashed border-line-strong pt-6">
@@ -42,7 +54,18 @@ const ResultStep = ({ result, order, onEdit, onReset }: {
           </div>
           <p className="mt-5 break-words text-sm text-ink-muted">Билеты отправим на {order.email}</p>
         </section>
-        <button type="button" onClick={onReset} className={primaryButtonClass}>Оформить ещё</button>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" onClick={onReset} className={primaryButtonClass}>Оформить ещё</button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            title="Откроется окно печати, где можно сохранить билеты как PDF"
+            className={secondaryButtonClass}
+          >
+            Скачать билеты
+            <span className="sr-only"> (откроется окно печати)</span>
+          </button>
+        </div>
       </>
     ) : result.reason === 'SOLD_OUT' ? (
       <>

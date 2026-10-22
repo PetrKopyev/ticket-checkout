@@ -23,7 +23,8 @@ const App = () => {
   useEffect(() => {
     if (previousStep.current === step) return
     previousStep.current = step
-    stepContent.current?.querySelector<HTMLElement>('[data-step-heading]')?.focus()
+    window.scrollTo({ top: 0 })
+    stepContent.current?.querySelector<HTMLElement>('[data-step-heading]')?.focus({ preventScroll: true })
   }, [step])
 
   const addParticipant = () => {

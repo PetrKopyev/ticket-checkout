@@ -4,11 +4,11 @@ import { cardClass, chipClass, formatPrice } from './ui'
 
 const EventHeader = () => (
   <header className={`${cardClass} mb-6`}>
-    <p className="mb-3 text-sm font-medium text-violet-soft">Покупка билетов</p>
-    <div className="flex min-w-0 items-start gap-3">
-      <img src="/logo.svg" alt="" width={32} height={32} className="shrink-0" />
-      <h1 className="min-w-0 break-words text-2xl sm:text-3xl">{EVENT.title}</h1>
-    </div>
+    <p className="mb-3 flex items-center gap-2 text-sm font-medium text-violet-soft">
+      <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
+      Покупка билетов
+    </p>
+    <h1 className="min-w-0 break-words text-2xl sm:text-3xl">{EVENT.title}</h1>
     <p className="mt-3 break-words text-ink-muted">{EVENT.date} · {EVENT.place}</p>
     <div className="mt-5 flex flex-wrap gap-2">
       <p className={chipClass}>Полный от {CHILD_LIMIT} лет — {formatPrice(FULL_PRICE)}</p>
