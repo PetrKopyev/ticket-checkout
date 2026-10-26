@@ -39,8 +39,6 @@ export type OutboxItem = { id: number; campaignId: number; email: string; subjec
 
 export type Limits = { subject: number; body: number }
 
-export const defaultLimits: Limits = { subject: 200, body: 5000 }
-
 export class ApiError extends Error {
   campaignId: number | null
 
@@ -70,7 +68,7 @@ export const getHistory = () => request<ChatMessage[]>('/assistant/history')
 export const sendMessage = (text: string) =>
   post<{ reply: string; campaignId: number | null }>('/assistant/message', { text })
 
-export const getLimits = () => request<Limits>('/limits').catch(() => defaultLimits)
+export const getLimits = () => request<Limits>('/limits')
 
 export const listCampaigns = () => request<CampaignSummary[]>('/campaigns')
 

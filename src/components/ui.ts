@@ -4,7 +4,7 @@ const focusClass = [
 ].join(' ')
 
 export const primaryButtonClass = [
-  'min-h-12 max-w-full whitespace-normal break-words rounded-control px-5 py-2.5 font-bold',
+  'min-h-12 max-w-full whitespace-normal rounded-control px-5 py-2.5 font-bold max-sm:px-3',
   'bg-brand-gradient bg-size-[180%_100%] text-ink shadow-button',
   'transition-[background-position,transform] motion-reduce:transition-none',
   'enabled:hover:bg-position-[100%_50%] motion-safe:enabled:hover:-translate-y-px',
@@ -13,7 +13,7 @@ export const primaryButtonClass = [
 ].join(' ')
 
 export const secondaryButtonClass = [
-  'min-h-11 max-w-full whitespace-normal break-words rounded-control px-4 py-2.5 font-bold',
+  'min-h-11 max-w-full whitespace-normal rounded-control px-4 py-2.5 font-bold max-sm:px-3',
   'border border-line-strong bg-transparent text-ink-soft',
   'hover:bg-surface-muted',
   'disabled:cursor-not-allowed disabled:opacity-60',

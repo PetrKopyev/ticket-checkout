@@ -35,7 +35,6 @@ export class CampaignNotFoundError extends Error {
 
 export const MAX_SUBJECT = 200
 export const MAX_LETTER_BODY = 5000
-export const MAILER_DOWN_ERROR = 'Служба отправки недоступна'
 
 type CampaignRow = {
   id: number
@@ -88,7 +87,7 @@ export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null =
   }
 }
 
-const mustGetCampaign = (db: DatabaseSync, id: number) => {
+export const mustGetCampaign = (db: DatabaseSync, id: number) => {
   const campaign = getCampaign(db, id)
   if (!campaign) throw new CampaignNotFoundError('Рассылка не найдена')
   return campaign
@@ -184,11 +183,9 @@ export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: 
       const error = await mailer.send(mail).then(() => null, (error: Error) => error)
       if (!error) {
         markSent.run(now(), campaignId, email)
-      } else if (error instanceof MailerDownError) {
-        markFailed.run(MAILER_DOWN_ERROR, campaignId, email)
-        break
       } else {
         markFailed.run(error.message, campaignId, email)
+        if (error instanceof MailerDownError) break
       }
     }
     const { left } = db

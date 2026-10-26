@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Campaign, CampaignStatus, Recipient } from './client'
-import { firstError, isUnfinished, partialMessage, partialTitle, statusLabel, summarize } from './status'
+import { eventDateLabel, firstError, isUnfinished, partialMessage, partialTitle, statusLabel, summarize } from './status'
 
 const recipient = (email: string, status: Recipient['status'], error: string | null = null, excluded = false): Recipient =>
   ({ email, status, error, excluded })
@@ -97,5 +97,11 @@ describe('isUnfinished', () => {
     ['completed', false],
   ])('%s — %s', (status, expected) => {
     expect(isUnfinished({ id: 1, eventTitle: 'Керамика', subject: 'Перенос', status, total: 3, sent: 1 })).toBe(expected)
+  })
+})
+
+describe('eventDateLabel', () => {
+  it('подписывает исходную дату события словом «было»', () => {
+    expect(eventDateLabel(new Date(2026, 10, 20, 19, 0).toISOString())).toBe('было 20 ноября в 19:00')
   })
 })

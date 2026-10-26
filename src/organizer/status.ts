@@ -33,4 +33,11 @@ export const partialMessage = ({ failed, pending }: Summary, error: string | nul
   return `Ошибка у ${failed} ${plural(failed, 'адреса', 'адресов', 'адресов')}${reason}.${rest}`
 }
 
+export const eventDateLabel = (iso: string) => {
+  const date = new Date(iso)
+  const day = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return `было ${day} в ${time}`
+}
+
 export const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'partial'

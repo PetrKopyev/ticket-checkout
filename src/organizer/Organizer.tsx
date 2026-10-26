@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listCampaigns } from './client'
-import type { CampaignSummary } from './client'
+import { getLimits, listCampaigns } from './client'
+import type { CampaignSummary, Limits } from './client'
 import ChatPanel from './ChatPanel'
 import CampaignPanel from './CampaignPanel'
 import OutboxList from './OutboxList'
@@ -16,11 +16,16 @@ const Organizer = () => {
   const [outboxKey, setOutboxKey] = useState(0)
   const [openKey, setOpenKey] = useState(0)
   const [pollAttempt, setPollAttempt] = useState(0)
+  const [limits, setLimits] = useState<Limits | null>(null)
   const campaignArea = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     history.scrollRestoration = 'manual'
     window.scrollTo({ top: 0 })
+  }, [])
+
+  useEffect(() => {
+    getLimits().then(setLimits, () => setLimits(null))
   }, [])
 
   useEffect(() => {
@@ -75,12 +80,12 @@ const Organizer = () => {
 
   return (
     <>
-      <header className={`${cardClass} mb-6 max-sm:p-3`}>
+      <header className={`${cardClass} mb-6 max-sm:px-3 max-sm:py-4`}>
         <p className="mb-3 flex items-center gap-2 text-sm font-medium text-violet-soft">
           <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
-          <span className="min-w-0 break-words">Уведомления покупателям</span>
+          <span className="min-w-0">Уведомления покупателям</span>
         </p>
-        <h1 className="break-words text-2xl sm:text-3xl">Кабинет организатора</h1>
+        <h1 className="text-xl sm:text-3xl">Кабинет организатора</h1>
         <p className="mt-3 text-ink-muted">
           Опишите помощнику, что изменилось, — он подготовит письмо. Отправка только после вашего подтверждения.
         </p>
@@ -89,7 +94,7 @@ const Organizer = () => {
       {unfinished && (
         <div
           role="status"
-          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-red/40 bg-red/10 p-4 max-sm:p-3"
+          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-red/40 bg-red/10 p-4 max-sm:px-3"
         >
           <div className="min-w-0">
             <p className="font-semibold text-red tabular-nums">
@@ -106,7 +111,7 @@ const Organizer = () => {
         <ChatPanel key={resetKey} onCampaign={showCampaign} onOpenCampaign={openCampaign} />
         <div className="grid min-w-0 gap-6">
           <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">
-            <CampaignPanel key={`${campaignId}-${openKey}`} campaignId={campaignId} onProgress={reloadOutbox} />
+            <CampaignPanel key={`${campaignId}-${openKey}`} campaignId={campaignId} limits={limits} onProgress={reloadOutbox} />
           </div>
           <OutboxList campaigns={campaigns} reloadKey={outboxKey} onReload={reloadOutbox} />
         </div>

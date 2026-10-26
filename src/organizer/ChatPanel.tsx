@@ -60,8 +60,8 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
   }
 
   return (
-    <section aria-labelledby="chat-heading" className={`${cardClass} flex flex-col gap-4 max-sm:p-3`}>
-      <h2 id="chat-heading" className="min-w-0 break-words text-xl">Помощник</h2>
+    <section aria-labelledby="chat-heading" className={`${cardClass} flex flex-col gap-4 max-sm:px-3 max-sm:py-4`}>
+      <h2 id="chat-heading" className="min-w-0 text-lg sm:text-xl">Помощник</h2>
       <div
         ref={list}
         role="log"
@@ -87,11 +87,11 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
         {messages.map(({ role, content, campaignId }, index) => (
           <div
             key={index}
-            className={`flex max-w-[85%] flex-col gap-2 ${role === 'user' ? 'self-end' : 'self-start'}`}
+            className={`flex max-w-[85%] flex-col gap-2 max-sm:max-w-[95%] ${role === 'user' ? 'self-end' : 'self-start'}`}
           >
             <p
               className={[
-                'whitespace-pre-wrap break-words rounded-control px-4 py-2.5',
+                'whitespace-pre-wrap break-words rounded-control px-4 py-2.5 max-sm:px-3',
                 role === 'user' ? 'bg-surface-muted' : 'border border-line',
               ].join(' ')}
             >

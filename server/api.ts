@@ -7,8 +7,8 @@ import {
   MAX_LETTER_BODY,
   MAX_SUBJECT,
   confirmCampaign,
-  getCampaign,
   listCampaigns,
+  mustGetCampaign,
   resumeCampaign,
   sendPending,
   updateDraft,
@@ -108,12 +108,6 @@ const runInBackground = (task: Promise<unknown>) => {
 }
 
 export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Mailer) => {
-  const campaignOr404 = (id: number) => {
-    const campaign = getCampaign(db, id)
-    if (!campaign) throw new HttpError(404, 'Рассылка не найдена')
-    return campaign
-  }
-
   let assistantBusy = false
 
   const route = async (req: IncomingMessage, path: string) => {
@@ -160,8 +154,7 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     if (!match) throw new HttpError(404, 'Не найдено')
     const id = Number(match[1])
     const action = match[2]
-    campaignOr404(id)
-    if (method === 'GET' && !action) return getCampaign(db, id)
+    if (method === 'GET' && !action) return mustGetCampaign(db, id)
     if (method === 'PATCH' && !action) return updateDraft(db, id, parsePatch(await readBody(req)))
     if (method === 'POST' && action === '/confirm') {
       const { campaign, started } = confirmCampaign(db, id)

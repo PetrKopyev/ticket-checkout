@@ -8,8 +8,13 @@ export type Mailer = { send: (mail: Mail) => Promise<void> }
 
 export const mailKey = (campaignId: number, email: string) => `${campaignId}:${email}`
 
+export const MAILER_DOWN_ERROR = 'Служба отправки недоступна'
+
 export class MailerDownError extends Error {
   name = 'MailerDownError'
+  constructor() {
+    super(MAILER_DOWN_ERROR)
+  }
 }
 
 type OutboxRow = { id: number; campaign_id: number; email: string; subject: string; sent_at: string }
@@ -30,13 +35,11 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 export const createDbMailer = (db: DatabaseSync, { delayMs = 0 } = {}): Mailer => ({
   send: async (mail) => {
     if (delayMs) await sleep(delayMs)
-    if (isMailerDown(db)) throw new MailerDownError('Почтовая служба недоступна')
-    // Ключ составлен из campaign_id и email, поэтому повтор отсекает UNIQUE (campaign_id, email)
-    if (mail.idempotencyKey !== mailKey(mail.campaignId, mail.email)) throw new Error('Неверный ключ идемпотентности')
+    if (isMailerDown(db)) throw new MailerDownError()
     db.prepare(`
-      INSERT INTO outbox (campaign_id, email, subject, body, sent_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(campaign_id, email) DO NOTHING
-    `).run(mail.campaignId, mail.email, mail.subject, mail.body, new Date().toISOString())
+      INSERT INTO outbox (campaign_id, email, subject, body, sent_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(idempotency_key) DO NOTHING
+    `).run(mail.campaignId, mail.email, mail.subject, mail.body, new Date().toISOString(), mail.idempotencyKey)
   },
 })
 

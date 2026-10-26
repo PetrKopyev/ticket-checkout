@@ -54,8 +54,8 @@ describe('client', () => {
     await expect(getLimits()).resolves.toEqual({ subject: 100, body: 1000 })
   })
 
-  it('без ответа о лимитах берёт значения по умолчанию', async () => {
+  it('ошибка запроса лимитов не подменяется значениями по умолчанию', async () => {
     mockFetch(new Response('Not Found', { status: 404 }))
-    await expect(getLimits()).resolves.toEqual({ subject: 200, body: 5000 })
+    await expect(getLimits()).rejects.toThrow('Ошибка 404')
   })
 })

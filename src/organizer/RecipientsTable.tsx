@@ -11,7 +11,7 @@ const statusView = {
 
 type Filter = 'all' | 'failed' | 'excluded'
 
-const filterButtonClass = `${secondaryButtonClass} max-sm:px-3 aria-pressed:border-violet-bright aria-pressed:bg-surface-muted aria-pressed:text-ink`
+const filterButtonClass = `${secondaryButtonClass} aria-pressed:border-violet-bright aria-pressed:bg-surface-muted aria-pressed:text-ink`
 
 const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: {
   recipients: Recipient[]
@@ -62,7 +62,7 @@ const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: 
         <thead className="text-ink-muted">
           <tr>
             <th scope="col" className="py-2 pr-3 font-medium">Email</th>
-            <th scope="col" className="w-2/5 py-2 font-medium">{editable ? 'Исключить' : 'Статус'}</th>
+            <th scope="col" className="w-2/5 py-2 font-medium max-sm:w-[6em]">{editable ? 'Исключить' : 'Статус'}</th>
           </tr>
         </thead>
         <tbody>
@@ -79,7 +79,7 @@ const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: 
                 <td className={`break-all py-2 pr-3 align-middle ${isExcluded ? 'text-ink-muted line-through' : ''}`}>
                   {recipient.email}
                 </td>
-                <td className="break-words py-2 align-middle hyphens-auto">
+                <td className="py-2 align-middle">
                   {editable && (
                     <label className="flex min-h-11 min-w-11 cursor-pointer flex-wrap items-center gap-2">
                       <input

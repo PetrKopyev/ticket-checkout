@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { defaultLimits } from './client'
 import { validate } from './validate'
 
 describe('validate', () => {
+  const limits = { subject: 200, body: 5000 }
+
   it.each([
     ['ошибок нет', { subject: 'Перенос', body: 'Текст', recipientsCount: 3 }, []],
     ['только тема', { subject: 'Перенос', body: '', recipientsCount: 3 }, ['Добавьте текст письма']],
@@ -13,11 +14,16 @@ describe('validate', () => {
     ['тема длиннее лимита', { subject: 'т'.repeat(201), body: 'Текст', recipientsCount: 3 }, ['Тема длиннее 200 символов']],
     ['текст длиннее лимита', { subject: 'Перенос', body: 'т'.repeat(5001), recipientsCount: 3 }, ['Текст длиннее 5000 символов']],
   ])('%s', (_, draft, expected) => {
-    expect(validate(draft, defaultLimits)).toEqual(expected)
+    expect(validate(draft, limits)).toEqual(expected)
   })
 
   it('берёт лимиты из настроек сервера', () => {
     expect(validate({ subject: 'Перенос', body: 'Текст', recipientsCount: 1 }, { subject: 5, body: 3 }))
       .toEqual(['Тема длиннее 5 символов', 'Текст длиннее 3 символов'])
+  })
+
+  it('без лимитов проверяет только пустые поля и получателей', () => {
+    expect(validate({ subject: 'т'.repeat(201), body: 'т'.repeat(5001), recipientsCount: 0 }, null))
+      .toEqual(['Нет ни одного получателя'])
   })
 })

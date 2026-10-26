@@ -17,7 +17,7 @@ const subscribeHash = (callback: () => void) => {
 
 const getHash = () => window.location.hash
 
-const navLinkClass = 'rounded-control flex min-h-11 min-w-0 break-words items-center px-3 py-2 text-center font-semibold text-ink-muted hover:text-ink aria-[current=page]:bg-surface-muted aria-[current=page]:text-ink'
+const navLinkClass = 'rounded-control flex min-h-11 min-w-0 items-center px-3 py-2 text-center font-semibold text-ink-muted hover:text-ink aria-[current=page]:bg-surface-muted aria-[current=page]:text-ink'
 
 const Nav = ({ isOrganizer }: { isOrganizer: boolean }) => (
   <nav aria-label="Разделы" className="mb-4 flex flex-wrap gap-2 print:hidden">
@@ -125,7 +125,7 @@ const App = () => {
         </div>
         <section
           aria-label="Демо"
-          className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5 print:hidden"
+          className="mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5 max-sm:px-3 print:hidden"
         >
           <p className="text-sm text-ink-muted">Инструмент для демонстрации</p>
           <p className="mt-2 text-sm text-ink-muted">Мест сейчас: {seats}</p>

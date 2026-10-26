@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   subject TEXT NOT NULL,
   body TEXT NOT NULL,
   sent_at TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL UNIQUE,
   UNIQUE (campaign_id, email)
 );
 CREATE TABLE IF NOT EXISTS chat_messages (

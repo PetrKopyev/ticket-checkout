@@ -7,7 +7,6 @@ import {
   CampaignNotFoundError,
   CampaignStateError,
   InvalidLetterError,
-  MAILER_DOWN_ERROR,
   confirmCampaign,
   createDraft,
   getCampaign,
@@ -18,7 +17,7 @@ import {
   updateDraft,
 } from './campaigns.ts'
 import { openDb } from './db.ts'
-import { MailerDownError, createDbMailer, isMailerDown, listOutbox, mailKey, setMailerDown, type Mail, type Mailer } from './mailer.ts'
+import { MAILER_DOWN_ERROR, MailerDownError, createDbMailer, isMailerDown, listOutbox, mailKey, setMailerDown, type Mail, type Mailer } from './mailer.ts'
 import { resetDemo, seed } from './seed.ts'
 
 const DRAFT = { eventId: 'ceramics', subject: 'Перенос', body: 'Мастер-класс переносится' }
@@ -278,7 +277,7 @@ describe('сбои', () => {
     const flaky: Mailer = {
       send: async (mail) => {
         calls++
-        if (calls === 2) throw new MailerDownError('нет связи')
+        if (calls === 2) throw new MailerDownError()
         await mailer.send(mail)
       },
     }
@@ -390,19 +389,29 @@ describe('outbox', () => {
     expect(listOutbox(db)).toEqual(first)
   })
 
-  it('письмо с чужим ключом идемпотентности не записывается', async () => {
+  it('ключ идемпотентности сохраняется в outbox', async () => {
     const id = confirmed()
-    const mail = { campaignId: id, email: 'anna@example.com', subject: 'Тема', body: 'Текст', idempotencyKey: mailKey(id, 'boris@example.com') }
-    await expect(createDbMailer(db).send(mail)).rejects.toThrow('Неверный ключ идемпотентности')
-    expect(listOutbox(db)).toEqual([])
+    const mail = { campaignId: id, email: 'anna@example.com', subject: 'Тема', body: 'Текст', idempotencyKey: mailKey(id, 'anna@example.com') }
+    await createDbMailer(db).send(mail)
+    expect(db.prepare('SELECT idempotency_key FROM outbox').all()).toEqual([{ idempotency_key: `${id}:anna@example.com` }])
+  })
+
+  it('повтор с тем же ключом не пишет второе письмо даже на другой адрес', async () => {
+    const id = confirmed()
+    const mailer = createDbMailer(db)
+    const mail = { campaignId: id, email: 'anna@example.com', subject: 'Тема', body: 'Текст', idempotencyKey: 'один-ключ' }
+    await mailer.send(mail)
+    await mailer.send({ ...mail, email: 'boris@example.com' })
+    expect(listOutbox(db).map((item) => item.email)).toEqual(['anna@example.com'])
   })
 
   it('UNIQUE не даёт вставить дубль напрямую', () => {
-    const insert = db.prepare(
-      "INSERT INTO outbox (campaign_id, email, subject, body, sent_at) VALUES (1, 'anna@example.com', 'Тема', 'Текст', '')",
-    )
-    insert.run()
-    expect(() => insert.run()).toThrow(/UNIQUE/)
+    const insert = (email: string, key: string) => db
+      .prepare("INSERT INTO outbox (campaign_id, email, subject, body, sent_at, idempotency_key) VALUES (1, ?, 'Тема', 'Текст', '', ?)")
+      .run(email, key)
+    insert('anna@example.com', '1:anna@example.com')
+    expect(() => insert('anna@example.com', 'другой')).toThrow(/UNIQUE/)
+    expect(() => insert('boris@example.com', '1:anna@example.com')).toThrow(/UNIQUE/)
   })
 
   it('resetDemo чистит рассылки и поднимает службу', async () => {

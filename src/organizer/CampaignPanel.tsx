@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmCampaign, defaultLimits, getCampaign, getLimits, resumeCampaign, updateCampaign } from './client'
+import { confirmCampaign, getCampaign, resumeCampaign, updateCampaign } from './client'
 import type { Campaign, Limits } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
 import RecipientsTable from './RecipientsTable'
-import { firstError, partialMessage, partialTitle, statusLabel, summarize } from './status'
+import { eventDateLabel, firstError, partialMessage, partialTitle, statusLabel, summarize } from './status'
 import { validate } from './validate'
 import { plural } from '../format'
 import {
@@ -20,18 +20,19 @@ import {
 const excludedOf = (campaign: Campaign) =>
   campaign.recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email)
 
-const formatDate = (iso: string) =>
-  new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-
 const LengthCounter = ({ length, max }: { length: number; max: number }) => length < max * 0.8 ? null : (
   <p className={`mt-1 text-right text-xs tabular-nums ${length > max ? 'text-red' : 'text-ink-muted'}`}>
     {length} / {max}
   </p>
 )
 
-const panelClass = `${cardClass} max-sm:p-3`
+const panelClass = `${cardClass} max-sm:px-3 max-sm:py-4`
 
-const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; onProgress: () => void }) => {
+const CampaignPanel = ({ campaignId, limits, onProgress }: {
+  campaignId: number | null
+  limits: Limits | null
+  onProgress: () => void
+}) => {
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -42,7 +43,6 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
   const [error, setError] = useState('')
   const [pollAttempt, setPollAttempt] = useState(0)
   const [isSent, setIsSent] = useState(false)
-  const [limits, setLimits] = useState<Limits>(defaultLimits)
   const sendButton = useRef<HTMLButtonElement>(null)
   const progress = useRef<HTMLDivElement>(null)
 
@@ -52,10 +52,6 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
     setBody(next.body)
     setExcluded(excludedOf(next))
   }
-
-  useEffect(() => {
-    getLimits().then(setLimits)
-  }, [])
 
   useEffect(() => {
     if (campaignId === null) return
@@ -149,15 +145,15 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-violet-soft">Рассылка</p>
-          <h2 id="campaign-heading" className="mt-1 min-w-0 break-words text-xl">{campaign.eventTitle}</h2>
+          <h2 id="campaign-heading" className="mt-1 min-w-0 break-words text-lg sm:text-xl">{campaign.eventTitle}</h2>
         </div>
-        <p className={`${campaign.status === 'partial' ? dangerChipClass : chipClass} break-words`}>
+        <p className={campaign.status === 'partial' ? dangerChipClass : chipClass}>
           {statusLabel(campaign.status, campaign.sent)}
         </p>
       </div>
-      <p className="mt-1 text-sm text-ink-muted">
-        {formatDate(campaign.startsAt)} · {addressCount}{' '}
-        {plural(addressCount, 'уникальный адрес', 'уникальных адреса', 'уникальных адресов')}
+      <p className="mt-1 text-sm text-ink-muted">Мероприятие: {eventDateLabel(campaign.startsAt)}</p>
+      <p className="text-sm text-ink-muted">
+        {addressCount} {plural(addressCount, 'уникальный адрес', 'уникальных адреса', 'уникальных адресов')}
       </p>
 
       {isDraft ? (
@@ -166,29 +162,29 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
           <input
             id="campaign-subject"
             value={subject}
-            maxLength={limits.subject}
-            aria-invalid={!subject.trim() || subject.length > limits.subject}
+            maxLength={limits?.subject}
+            aria-invalid={!subject.trim() || (limits !== null && subject.length > limits.subject)}
             onChange={(event) => {
               setSubject(event.target.value)
               setSaved(false)
             }}
             className={inputClass}
           />
-          <LengthCounter length={subject.length} max={limits.subject} />
+          {limits && <LengthCounter length={subject.length} max={limits.subject} />}
           <label htmlFor="campaign-body" className="mt-4 block text-sm font-medium">Текст письма</label>
           <textarea
             id="campaign-body"
             rows={8}
             value={body}
-            maxLength={limits.body}
-            aria-invalid={!body.trim() || body.length > limits.body}
+            maxLength={limits?.body}
+            aria-invalid={!body.trim() || (limits !== null && body.length > limits.body)}
             onChange={(event) => {
               setBody(event.target.value)
               setSaved(false)
             }}
             className={inputClass}
           />
-          <LengthCounter length={body.length} max={limits.body} />
+          {limits && <LengthCounter length={body.length} max={limits.body} />}
           <EmailPreview heading="Так выглядит письмо" subject={subject} body={body} />
         </div>
       ) : (
@@ -211,18 +207,18 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
       )}
 
       {campaign.status === 'partial' && (
-        <div role="alert" className={`${alertClass} mt-4 max-sm:p-3`}>
+        <div role="alert" className={`${alertClass} mt-4 max-sm:px-3`}>
           <p>{partialTitle(campaign.sent)}: отправлено {campaign.sent} из {campaign.total}.</p>
-          <p className="mt-1 break-words text-sm font-normal text-ink-soft">
+          <p className="mt-1 text-sm font-normal text-ink-soft">
             {partialMessage(summarize(campaign), firstError(campaign))}
           </p>
           <button
             type="button"
             disabled={isBusy}
             onClick={() => run(() => resumeCampaign(campaign.id))}
-            className={`${primaryButtonClass} mt-3 max-sm:px-3`}
+            className={`${primaryButtonClass} mt-3`}
           >
-            Повторить для неудавшихся ({unsentCount})
+            Повторить отправку ({unsentCount})
           </button>
           <p className="mt-2 text-sm font-normal text-ink-soft">
             Тем, кому письмо уже отправлено, оно повторно не уйдёт.
@@ -264,7 +260,7 @@ const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; 
       {isConfirming && (
         <ConfirmDialog
           eventTitle={campaign.eventTitle}
-          date={formatDate(campaign.startsAt)}
+          eventDate={eventDateLabel(campaign.startsAt)}
           subject={subject}
           body={body}
           recipientsCount={recipientsCount}
