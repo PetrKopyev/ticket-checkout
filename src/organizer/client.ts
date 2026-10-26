@@ -15,7 +15,6 @@ export type Recipient = {
   email: string
   status: 'pending' | 'sent' | 'failed'
   error: string | null
-  attempts: number
   excluded: boolean
 }
 
@@ -38,6 +37,19 @@ export type CampaignPatch = { subject?: string; body?: string; excluded?: string
 
 export type OutboxItem = { id: number; campaignId: number; email: string; subject: string; sentAt: string }
 
+export type Limits = { subject: number; body: number }
+
+export const defaultLimits: Limits = { subject: 200, body: 5000 }
+
+export class ApiError extends Error {
+  campaignId: number | null
+
+  constructor(message: string, campaignId: number | null) {
+    super(message)
+    this.campaignId = campaignId
+  }
+}
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(`/api${path}`, {
     ...init,
@@ -45,7 +57,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   })
   if (!response.ok) {
     const data = await response.json().catch(() => null)
-    throw new Error(data?.error ?? `Ошибка ${response.status}`)
+    throw new ApiError(data?.error ?? `Ошибка ${response.status}`, data?.campaignId ?? null)
   }
   return response.json()
 }
@@ -57,6 +69,8 @@ export const getHistory = () => request<ChatMessage[]>('/assistant/history')
 
 export const sendMessage = (text: string) =>
   post<{ reply: string; campaignId: number | null }>('/assistant/message', { text })
+
+export const getLimits = () => request<Limits>('/limits').catch(() => defaultLimits)
 
 export const listCampaigns = () => request<CampaignSummary[]>('/campaigns')
 

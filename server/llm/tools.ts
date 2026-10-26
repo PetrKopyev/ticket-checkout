@@ -40,10 +40,9 @@ export const TOOLS: ToolDef[] = [
 
 const toEvent = (row: EventRow) => ({ id: row.id, title: row.title, startsAt: row.starts_at, place: row.place })
 
-const findEvent = (db: DatabaseSync, id: unknown) =>
-  db.prepare('SELECT id, title, starts_at, place FROM events WHERE id = ?').get(String(id)) as EventRow | undefined
+const findEvent = (db: DatabaseSync, id: string) =>
+  db.prepare('SELECT id, title, starts_at, place FROM events WHERE id = ?').get(id) as EventRow | undefined
 
-const text = (value: unknown) => typeof value === 'string' && value.trim() !== ''
 
 const parseArgs = (json: string): Record<string, unknown> | null => {
   try {
@@ -64,13 +63,14 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string): objec
   if (!['get_event', 'list_recipients', 'create_draft_campaign'].includes(name)) {
     return { error: `Неизвестный инструмент ${name}` }
   }
-  const event = text(args.event_id) && findEvent(db, args.event_id)
+  const event = typeof args.event_id === 'string' && findEvent(db, args.event_id)
   if (!event) return { error: 'Мероприятие не найдено' }
   if (name === 'get_event') return toEvent(event)
   if (name === 'list_recipients') return { count: selectRecipients(db, event.id).length }
-  if (!text(args.subject) || !text(args.body)) return { error: 'Нужны непустые subject и body' }
+  const { subject, body } = args
+  if (typeof subject !== 'string' || typeof body !== 'string') return { error: 'Тема и текст письма должны быть строками' }
   try {
-    const campaign = createDraft(db, { eventId: event.id, subject: String(args.subject), body: String(args.body) })
+    const campaign = createDraft(db, { eventId: event.id, subject, body })
     return { campaign_id: campaign.id, recipients_count: campaign.total }
   } catch (error) {
     if (error instanceof InvalidLetterError) return { error: error.message }

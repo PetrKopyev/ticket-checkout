@@ -1,18 +1,14 @@
-import type { CampaignStatus, CampaignSummary, Recipient } from './client'
+import type { Campaign, CampaignStatus, CampaignSummary } from './client'
 import { plural } from '../format'
 
 export type Summary = { sent: number; failed: number; pending: number; excluded: number }
 
-export const summarize = (recipients: Recipient[], excluded: string[]): Summary => {
-  const active = recipients.filter((recipient) => !excluded.includes(recipient.email))
-  const countOf = (status: Recipient['status']) => active.filter((recipient) => recipient.status === status).length
-  return {
-    sent: countOf('sent'),
-    failed: countOf('failed'),
-    pending: countOf('pending'),
-    excluded: recipients.length - active.length,
-  }
-}
+export const summarize = ({ sent, failed, pending, recipients }: Campaign): Summary => ({
+  sent,
+  failed,
+  pending,
+  excluded: recipients.filter((recipient) => recipient.excluded).length,
+})
 
 const statusLabels: Record<CampaignStatus, string> = {
   draft: 'Черновик',
@@ -26,15 +22,15 @@ export const statusLabel = (status: CampaignStatus, sent: number) =>
 
 export const partialTitle = (sent: number) => sent === 0 ? 'Письма не отправлены' : 'Часть писем не ушла'
 
-export const partialReasons = ({ failed, pending }: Summary) => {
-  const reasons: string[] = []
-  if (failed > 0) {
-    reasons.push(`Ошибка у ${failed} ${plural(failed, 'адреса', 'адресов', 'адресов')} — причина указана в таблице.`)
-  }
-  if (pending > 0) {
-    reasons.push(`${pending} ${plural(pending, 'письмо ждёт', 'письма ждут', 'писем ждут')} повтора: служба отправки недоступна.`)
-  }
-  return reasons
+export const firstError = (campaign: Campaign) =>
+  campaign.recipients.find((recipient) => recipient.status === 'failed' && !recipient.excluded)?.error ?? null
+
+export const partialMessage = ({ failed, pending }: Summary, error: string | null) => {
+  const letters = `${pending} ${plural(pending, 'письмо', 'письма', 'писем')}`
+  if (failed === 0) return `Отправка остановлена, не отправлено ${letters}.`
+  const reason = error ? `: ${error.replace(/\.$/, '')}` : ''
+  const rest = pending > 0 ? ` Остальным (${pending}) письма ещё не отправлены.` : ''
+  return `Ошибка у ${failed} ${plural(failed, 'адреса', 'адресов', 'адресов')}${reason}.${rest}`
 }
 
-export const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'sending' || campaign.status === 'partial'
+export const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'partial'

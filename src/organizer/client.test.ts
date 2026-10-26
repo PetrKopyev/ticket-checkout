@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { confirmCampaign, getCampaign, updateCampaign } from './client'
+import { ApiError, confirmCampaign, getCampaign, getLimits, sendMessage, updateCampaign } from './client'
 
 const mockFetch = (response: Response) => {
   const fetch = vi.fn(async () => response)
@@ -40,5 +40,22 @@ describe('client', () => {
       body: '{"subject":"Перенос"}',
       headers: { 'Content-Type': 'application/json' },
     })
+  })
+
+  it('отдаёт номер рассылки из ответа с ошибкой', async () => {
+    mockFetch(Response.json({ error: 'Ассистент сейчас недоступен', campaignId: 7 }, { status: 502 }))
+    const error = await sendMessage('Перенос').catch((reason: ApiError) => reason)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({ message: 'Ассистент сейчас недоступен', campaignId: 7 })
+  })
+
+  it('берёт лимиты с сервера', async () => {
+    mockFetch(Response.json({ subject: 100, body: 1000 }))
+    await expect(getLimits()).resolves.toEqual({ subject: 100, body: 1000 })
+  })
+
+  it('без ответа о лимитах берёт значения по умолчанию', async () => {
+    mockFetch(new Response('Not Found', { status: 404 }))
+    await expect(getLimits()).resolves.toEqual({ subject: 200, body: 5000 })
   })
 })

@@ -31,9 +31,9 @@ const DemoPanel = ({ onReset }: { onReset: () => void }) => {
   }
 
   return (
-    <details className="group mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5">
+    <details className="group mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5 max-sm:p-3">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-bright [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0">
+        <span className="min-w-0 break-words">
           <span className="block font-semibold">Демо-настройки</span>
           <span className="block text-sm text-ink-muted">Только для демонстрации</span>
         </span>

@@ -6,7 +6,7 @@ import { resetDemo, seed } from './seed.ts'
 
 let db: DatabaseSync
 
-const emails = (eventId: string) => selectRecipients(db, eventId).map((recipient) => recipient.email)
+const emails = (eventId: string) => selectRecipients(db, eventId)
 
 const addPurchase = (eventId: string, email: string, status: 'active' | 'cancelled') => {
   db.prepare('INSERT INTO purchases (event_id, buyer_name, email, status, qty) VALUES (?, ?, ?, ?, 1)')

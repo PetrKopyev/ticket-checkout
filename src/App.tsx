@@ -41,6 +41,10 @@ const App = () => {
   const isOrganizer = useSyncExternalStore(subscribeHash, getHash) === '#/organizer'
 
   useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [isOrganizer])
+
+  useEffect(() => {
     if (previousStep.current === step) return
     previousStep.current = step
     window.scrollTo({ top: 0 })
@@ -72,7 +76,7 @@ const App = () => {
   if (isOrganizer) {
     return (
       <main className="min-h-screen text-ink">
-        <div className="mx-auto min-w-0 max-w-6xl px-4 pt-6 pb-6">
+        <div className="mx-auto min-w-0 max-w-6xl px-2 pt-6 pb-6 sm:px-4">
           <Nav isOrganizer />
           <Organizer />
         </div>

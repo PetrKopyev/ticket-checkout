@@ -1,4 +1,4 @@
-export type ToolCall = { id: string; name: string; arguments: string }
+type ToolCall = { id: string; name: string; arguments: string }
 
 export type ChatMessage =
   | { role: 'system' | 'user'; content: string }

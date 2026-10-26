@@ -1,12 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { transaction } from './db.ts'
-import { MailerDownError, type Mailer } from './mailer.ts'
+import { MailerDownError, mailKey, type Mailer } from './mailer.ts'
 import { normalizeEmail, selectRecipients } from './recipients.ts'
 
 export type CampaignStatus = 'draft' | 'sending' | 'completed' | 'partial'
-export type DeliveryStatus = 'pending' | 'sent' | 'failed'
+type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
-export type CampaignView = {
+type CampaignView = {
   id: number
   eventId: string
   eventTitle: string
@@ -29,6 +29,10 @@ export class InvalidLetterError extends Error {
   name = 'InvalidLetterError'
 }
 
+export class CampaignNotFoundError extends Error {
+  name = 'CampaignNotFoundError'
+}
+
 export const MAX_SUBJECT = 200
 export const MAX_LETTER_BODY = 5000
 export const MAILER_DOWN_ERROR = 'Служба отправки недоступна'
@@ -49,15 +53,11 @@ const activeSends = new Set<number>()
 
 const now = () => new Date().toISOString()
 
-const checkText = (value: string | undefined, field: string, max: number) => {
-  if (value === undefined) return
-  if (!value.trim()) throw new InvalidLetterError(`${field} не может быть пустым`)
-  if (value.length > max) throw new InvalidLetterError(`${field} длиннее ${max} символов`)
-}
-
-const checkLetter = (letter: { subject?: string; body?: string }) => {
-  checkText(letter.subject, 'subject', MAX_SUBJECT)
-  checkText(letter.body, 'body', MAX_LETTER_BODY)
+const checkLetter = ({ subject, body }: { subject?: string; body?: string }) => {
+  if (subject !== undefined && !subject.trim()) throw new InvalidLetterError('Тема не может быть пустой')
+  if (subject !== undefined && subject.length > MAX_SUBJECT) throw new InvalidLetterError(`Тема длиннее ${MAX_SUBJECT} символов`)
+  if (body !== undefined && !body.trim()) throw new InvalidLetterError('Текст не может быть пустым')
+  if (body !== undefined && body.length > MAX_LETTER_BODY) throw new InvalidLetterError(`Текст длиннее ${MAX_LETTER_BODY} символов`)
 }
 
 export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null => {
@@ -88,7 +88,11 @@ export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null =
   }
 }
 
-const mustGetCampaign = (db: DatabaseSync, id: number) => getCampaign(db, id) as CampaignView
+const mustGetCampaign = (db: DatabaseSync, id: number) => {
+  const campaign = getCampaign(db, id)
+  if (!campaign) throw new CampaignNotFoundError('Рассылка не найдена')
+  return campaign
+}
 
 export const listCampaigns = (db: DatabaseSync) =>
   db.prepare(`
@@ -112,7 +116,7 @@ export const createDraft = (
     const { lastInsertRowid } = db
       .prepare("INSERT INTO campaigns (event_id, subject, body, status, created_at) VALUES (?, ?, ?, 'draft', ?)")
       .run(draft.eventId, draft.subject, draft.body, now())
-    selectRecipients(db, draft.eventId).forEach((recipient) => insertDelivery.run(lastInsertRowid, recipient.email))
+    selectRecipients(db, draft.eventId).forEach((email) => insertDelivery.run(lastInsertRowid, email))
     return Number(lastInsertRowid)
   })
   return mustGetCampaign(db, id)
@@ -151,11 +155,15 @@ export const confirmCampaign = (db: DatabaseSync, id: number) => {
 
 // Шлёт pending и failed по одному. Ошибка адреса -> failed, идём дальше.
 // Служба недоступна -> этот адрес failed, остальные ждут resume. Сбой самого цикла -> partial и throw.
-export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: number): Promise<CampaignView> => {
-  const campaign = mustGetCampaign(db, campaignId)
-  if (campaign.status !== 'sending' || activeSends.has(campaignId)) return campaign
+// Кампания пропала или вышла из sending (сброс демо) -> цикл останавливается; нет кампании -> null.
+export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: number): Promise<CampaignView | null> => {
+  const campaign = getCampaign(db, campaignId)
+  if (!campaign || campaign.status !== 'sending' || activeSends.has(campaignId)) return campaign
   activeSends.add(campaignId)
   const setStatus = (status: CampaignStatus) => db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run(status, campaignId)
+  const isSending = () =>
+    (db.prepare('SELECT status FROM campaigns WHERE id = ?').get(campaignId) as { status: CampaignStatus } | undefined)
+      ?.status === 'sending'
   try {
     const emails = db.prepare(`
       SELECT email FROM deliveries
@@ -171,8 +179,9 @@ export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: 
       WHERE campaign_id = ? AND email = ?
     `)
     for (const { email } of emails) {
-      const error = await mailer.send({ campaignId, email, subject: campaign.subject, body: campaign.body })
-        .then(() => null, (error: Error) => error)
+      if (!isSending()) return getCampaign(db, campaignId)
+      const mail = { campaignId, email, subject: campaign.subject, body: campaign.body, idempotencyKey: mailKey(campaignId, email) }
+      const error = await mailer.send(mail).then(() => null, (error: Error) => error)
       if (!error) {
         markSent.run(now(), campaignId, email)
       } else if (error instanceof MailerDownError) {
@@ -187,12 +196,16 @@ export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: 
       .get(campaignId) as { left: number }
     setStatus(left === 0 ? 'completed' : 'partial')
   } catch (error) {
-    setStatus('partial')
+    try {
+      setStatus('partial')
+    } catch (statusError) {
+      console.error(statusError)
+    }
     throw error
   } finally {
     activeSends.delete(campaignId)
   }
-  return mustGetCampaign(db, campaignId)
+  return getCampaign(db, campaignId)
 }
 
 export const resumeCampaign = (db: DatabaseSync, id: number) => {

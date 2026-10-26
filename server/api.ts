@@ -1,8 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { DatabaseSync } from 'node:sqlite'
 import {
+  CampaignNotFoundError,
   CampaignStateError,
   InvalidLetterError,
+  MAX_LETTER_BODY,
+  MAX_SUBJECT,
   confirmCampaign,
   getCampaign,
   listCampaigns,
@@ -10,7 +13,7 @@ import {
   sendPending,
   updateDraft,
 } from './campaigns.ts'
-import { getHistory, sendAssistantMessage } from './llm/assistant.ts'
+import { LlmFailedError, getHistory, sendAssistantMessage } from './llm/assistant.ts'
 import type { LlmClient } from './llm/types.ts'
 import { isMailerDown, listOutbox, setMailerDown, type Mailer } from './mailer.ts'
 import { resetDemo } from './seed.ts'
@@ -19,9 +22,11 @@ type EventRow = { id: string; title: string; starts_at: string; place: string }
 
 class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  details: object
+  constructor(status: number, message: string, details: object = {}) {
     super(message)
     this.status = status
+    this.details = details
   }
 }
 
@@ -79,8 +84,8 @@ const send = (res: ServerResponse, status: number, data: unknown) => {
   res.end(JSON.stringify(data))
 }
 
-const optionalString = (value: unknown, field: string) => {
-  if (value !== undefined && typeof value !== 'string') throw new HttpError(400, `${field} должно быть строкой`)
+const optionalString = (value: unknown, message: string) => {
+  if (value !== undefined && typeof value !== 'string') throw new HttpError(400, message)
   return value
 }
 
@@ -89,11 +94,11 @@ const isJson = (req: IncomingMessage) => req.headers['content-type']?.split(';')
 const parsePatch = (body: Record<string, unknown>) => {
   const { excluded } = body
   if (excluded !== undefined && !(Array.isArray(excluded) && excluded.every((email) => typeof email === 'string'))) {
-    throw new HttpError(400, 'excluded должно быть списком email')
+    throw new HttpError(400, 'Исключённые адреса должны быть списком строк')
   }
   return {
-    subject: optionalString(body.subject, 'subject'),
-    body: optionalString(body.body, 'body'),
+    subject: optionalString(body.subject, 'Тема должна быть строкой'),
+    body: optionalString(body.body, 'Текст должен быть строкой'),
     excluded: excluded as string[] | undefined,
   }
 }
@@ -131,17 +136,19 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
         return await sendAssistantMessage(db, llm, text.trim())
       } catch (error) {
         console.error(error)
-        throw new HttpError(502, 'Ассистент сейчас недоступен')
+        const campaignId = error instanceof LlmFailedError ? error.campaignId : null
+        throw new HttpError(502, 'Ассистент сейчас недоступен', { campaignId })
       } finally {
         assistantBusy = false
       }
     }
+    if (method === 'GET' && path === '/api/limits') return { subject: MAX_SUBJECT, body: MAX_LETTER_BODY }
     if (method === 'GET' && path === '/api/campaigns') return listCampaigns(db)
     if (method === 'GET' && path === '/api/outbox') return listOutbox(db)
     if (method === 'GET' && path === '/api/demo') return { mailerDown: isMailerDown(db) }
     if (method === 'POST' && path === '/api/demo/mailer') {
       const { down } = await readBody(req)
-      if (typeof down !== 'boolean') throw new HttpError(400, 'down должно быть true или false')
+      if (typeof down !== 'boolean') throw new HttpError(400, 'Состояние почты должно быть true или false')
       setMailerDown(db, down)
       return { mailerDown: down }
     }
@@ -177,9 +184,10 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
       .then((data) => send(res, 200, data))
       .catch((error) => {
         if (error instanceof HttpError && error.status === 413) res.setHeader('Connection', 'close')
-        if (error instanceof HttpError) return send(res, error.status, { error: error.message })
+        if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.details })
         if (error instanceof InvalidLetterError) return send(res, 400, { error: error.message })
         if (error instanceof CampaignStateError) return send(res, 409, { error: error.message })
+        if (error instanceof CampaignNotFoundError) return send(res, 404, { error: error.message })
         console.error(error)
         send(res, 500, { error: 'Внутренняя ошибка сервера' })
       })

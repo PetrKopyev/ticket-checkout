@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Recipient } from './client'
-import { summarize } from './status'
+import type { Summary } from './status'
 import { secondaryButtonClass } from '../components/ui'
 
 const statusView = {
@@ -11,17 +11,17 @@ const statusView = {
 
 type Filter = 'all' | 'failed' | 'excluded'
 
-const filterButtonClass = `${secondaryButtonClass} aria-pressed:border-violet-bright aria-pressed:bg-surface-muted aria-pressed:text-ink`
+const filterButtonClass = `${secondaryButtonClass} max-sm:px-3 aria-pressed:border-violet-bright aria-pressed:bg-surface-muted aria-pressed:text-ink`
 
-const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
+const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: {
   recipients: Recipient[]
+  summary: Summary
   editable: boolean
   excluded: string[]
   onToggle: (email: string) => void
 }) => {
   const [filter, setFilter] = useState<Filter>('all')
 
-  const summary = summarize(recipients, excluded)
   const lists = {
     all: recipients,
     failed: recipients.filter((recipient) => recipient.status === 'failed' && !excluded.includes(recipient.email)),
@@ -39,9 +39,11 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
   return (
     <div className="mt-6">
       <h3 id="recipients-heading" className="text-base">Получатели</h3>
-      <p className="mt-1 text-sm text-ink-soft tabular-nums">
-        Отправлено {summary.sent}, ошибок {summary.failed}, ожидает {summary.pending}, исключено {summary.excluded}
-      </p>
+      {!editable && (
+        <p className="mt-1 text-sm text-ink-soft tabular-nums">
+          Отправлено {summary.sent}, ошибок {summary.failed}, ожидает {summary.pending}, исключено {summary.excluded}
+        </p>
+      )}
       <div role="group" aria-label="Показать получателей" className="mt-3 flex flex-wrap gap-2">
         {filters.map((item) => (
           <button
@@ -77,7 +79,7 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
                 <td className={`break-all py-2 pr-3 align-middle ${isExcluded ? 'text-ink-muted line-through' : ''}`}>
                   {recipient.email}
                 </td>
-                <td className="break-words py-2 align-middle">
+                <td className="break-words py-2 align-middle hyphens-auto">
                   {editable && (
                     <label className="flex min-h-11 min-w-11 cursor-pointer flex-wrap items-center gap-2">
                       <input
@@ -87,7 +89,7 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
                         aria-label={`Исключить ${recipient.email}`}
                         className="size-5 accent-violet"
                       />
-                      <span>Исключить</span>
+                      <span className="max-sm:sr-only">Исключить</span>
                     </label>
                   )}
                   {!editable && isExcluded && <span className="text-ink-muted">Исключён</span>}

@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { extname, join, normalize } from 'node:path'
+import { extname } from 'node:path'
 import { isLocalHost, parsePath } from './api.ts'
 import { getApp } from './app.ts'
+import { resolveStatic } from './static.ts'
 
 const DIST = 'dist'
 const PORT = Number(process.env.PORT ?? 3001)
@@ -26,17 +27,14 @@ const SECURITY_HEADERS = {
 
 const api = getApp()
 
-const isFile = (path: string) => existsSync(path) && statSync(path).isFile()
-
 const serveStatic = (req: IncomingMessage, res: ServerResponse) => {
   const pathname = parsePath(req.url)
   if (pathname === null) {
     res.writeHead(400, SECURITY_HEADERS).end('Bad request')
     return
   }
-  const path = join(DIST, normalize(pathname))
-  const file = isFile(path) ? path : join(DIST, 'index.html')
-  if (!isFile(file)) {
+  const file = resolveStatic(DIST, pathname)
+  if (!file) {
     res.writeHead(404, SECURITY_HEADERS).end('Not found')
     return
   }

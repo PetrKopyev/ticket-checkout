@@ -31,9 +31,9 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
     .filter((group) => group.letters.length > 0)
 
   return (
-    <section aria-labelledby="outbox-heading" className={cardClass}>
+    <section aria-labelledby="outbox-heading" className={`${cardClass} max-sm:p-3`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="outbox-heading" className="text-xl">Отправленные письма</h2>
+        <h2 id="outbox-heading" className="min-w-0 break-words text-xl">Отправленные письма</h2>
         <button type="button" onClick={onReload} className={secondaryButtonClass}>Обновить</button>
       </div>
       <p className="mt-1 text-sm text-ink-muted">Демо-почтовый ящик: что ушло покупателям</p>

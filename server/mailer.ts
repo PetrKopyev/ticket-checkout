@@ -1,8 +1,12 @@
 import type { DatabaseSync } from 'node:sqlite'
 
-export type Mail = { campaignId: number; email: string; subject: string; body: string }
+export type Mail = { campaignId: number; email: string; subject: string; body: string; idempotencyKey: string }
 
+// Доставка at-least-once: если процесс упадёт между send и отметкой sent, письмо уйдёт повторно.
+// Поэтому send обязан быть идемпотентным по idempotencyKey: повтор с тем же ключом не шлёт второе письмо.
 export type Mailer = { send: (mail: Mail) => Promise<void> }
+
+export const mailKey = (campaignId: number, email: string) => `${campaignId}:${email}`
 
 export class MailerDownError extends Error {
   name = 'MailerDownError'
@@ -27,6 +31,8 @@ export const createDbMailer = (db: DatabaseSync, { delayMs = 0 } = {}): Mailer =
   send: async (mail) => {
     if (delayMs) await sleep(delayMs)
     if (isMailerDown(db)) throw new MailerDownError('Почтовая служба недоступна')
+    // Ключ составлен из campaign_id и email, поэтому повтор отсекает UNIQUE (campaign_id, email)
+    if (mail.idempotencyKey !== mailKey(mail.campaignId, mail.email)) throw new Error('Неверный ключ идемпотентности')
     db.prepare(`
       INSERT INTO outbox (campaign_id, email, subject, body, sent_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(campaign_id, email) DO NOTHING

@@ -34,7 +34,7 @@ const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, exclu
       aria-describedby="confirm-summary"
       onCancel={(event) => isBusy && event.preventDefault()}
       onClose={(event) => onClose(event.currentTarget.returnValue === 'sent')}
-      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-line-strong bg-card p-5 text-ink shadow-card backdrop:bg-black/70"
+      className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-line-strong bg-card p-5 text-ink max-sm:p-4 shadow-card backdrop:bg-black/70"
     >
       <h2 id="confirm-heading" className="text-xl">Отправить рассылку?</h2>
       <div id="confirm-summary" className="mt-3 flex flex-col gap-3">

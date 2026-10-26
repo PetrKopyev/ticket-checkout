@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { getHistory, sendMessage } from './client'
-import type { ChatMessage } from './client'
+import type { ApiError, ChatMessage } from './client'
 import { alertClass, cardClass, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
 const EXAMPLE = 'Переносим мастер-класс "Керамика" на 20 ноября, 19:00. Подготовь уведомление покупателям'
@@ -39,7 +39,9 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
       setMessages((previous) => [...previous, { role: 'assistant', content: reply, campaignId: campaignId ?? undefined }])
       if (campaignId !== null) onCampaign(campaignId)
     } catch (reason) {
-      setError((reason as Error).message)
+      const { message, campaignId } = reason as ApiError
+      setError(message)
+      if (campaignId) onCampaign(campaignId)
     } finally {
       setIsThinking(false)
       input.current?.focus()
@@ -58,8 +60,8 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
   }
 
   return (
-    <section aria-labelledby="chat-heading" className={`${cardClass} flex flex-col gap-4`}>
-      <h2 id="chat-heading" className="text-xl">Помощник</h2>
+    <section aria-labelledby="chat-heading" className={`${cardClass} flex flex-col gap-4 max-sm:p-3`}>
+      <h2 id="chat-heading" className="min-w-0 break-words text-xl">Помощник</h2>
       <div
         ref={list}
         role="log"

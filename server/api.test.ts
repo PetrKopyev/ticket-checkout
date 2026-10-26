@@ -294,8 +294,39 @@ describe('api', () => {
   })
 
   it('падение LLM — 502', async () => {
+    vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     await listen({ chat: async () => { throw new Error('LLM ответил 500') } })
-    expect((await request('/api/assistant/message', 'POST', { text: 'Привет' })).status).toBe(502)
+    expect(await request('/api/assistant/message', 'POST', { text: 'Привет' }))
+      .toEqual({ status: 502, data: { error: 'Ассистент сейчас недоступен', campaignId: null } })
+  })
+
+  it('LLM упал после создания черновика — 502 с campaignId', async () => {
+    vi.spyOn(console, 'error').mockImplementationOnce(() => {})
+    const fake = createFakeLlm()
+    let step = 0
+    await listen({
+      chat: async (messages, tools) => {
+        if (step++ === 3) throw new Error('LLM ответил 500')
+        return fake.chat(messages, tools)
+      },
+    })
+    const { status, data } = await request('/api/assistant/message', 'POST', { text: 'Перенеси мастер-класс по керамике на 20 ноября, 19:00' })
+    const list = await request('/api/campaigns')
+    expect(status).toBe(502)
+    expect(list.data).toHaveLength(1)
+    expect(data).toEqual({ error: 'Ассистент сейчас недоступен', campaignId: list.data[0].id })
+  })
+
+  it('отдаёт лимиты темы и текста', async () => {
+    expect((await request('/api/limits')).data).toEqual({ subject: 200, body: 5000 })
+  })
+
+  it('ошибки письма по-русски, без имён полей', async () => {
+    const id = await createDraft()
+    const patch = (body: object) => request(`/api/campaigns/${id}`, 'PATCH', body)
+    expect((await patch({ subject: '' })).data).toEqual({ error: 'Тема не может быть пустой' })
+    expect((await patch({ body: 'а'.repeat(5001) })).data).toEqual({ error: 'Текст длиннее 5000 символов' })
+    expect((await patch({ subject: 1 })).data).toEqual({ error: 'Тема должна быть строкой' })
   })
 
   it('пока помощник отвечает, второе сообщение — 409', async () => {
