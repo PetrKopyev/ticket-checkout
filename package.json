@@ -5,13 +5,15 @@
   "description": "Тестовое задание Sqoch: оформление билетов на мероприятие на моковых данных",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "api": "node server/main.ts",
+    "start": "npm run build && npm run api",
     "test": "vitest run"
   },
   "dependencies": {

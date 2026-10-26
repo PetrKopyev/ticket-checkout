@@ -8,6 +8,25 @@ import ResultStep from './components/ResultStep'
 import EventHeader from './components/EventHeader'
 import StepIndicator from './components/StepIndicator'
 import { secondaryButtonClass } from './components/ui'
+import Organizer from './organizer/Organizer'
+
+const subscribeHash = (callback: () => void) => {
+  window.addEventListener('hashchange', callback)
+  return () => window.removeEventListener('hashchange', callback)
+}
+
+const getHash = () => window.location.hash
+
+const navLinkClass = 'rounded-control px-3 py-2 font-semibold text-ink-muted hover:text-ink aria-[current=page]:bg-surface-muted aria-[current=page]:text-ink'
+
+const Nav = ({ isOrganizer }: { isOrganizer: boolean }) => (
+  <nav aria-label="Разделы" className="mb-4 flex flex-wrap gap-2 print:hidden">
+    <a href="#/" aria-current={isOrganizer ? undefined : 'page'} className={navLinkClass}>Покупка билетов</a>
+    <a href="#/organizer" aria-current={isOrganizer ? 'page' : undefined} className={navLinkClass}>
+      Кабинет организатора
+    </a>
+  </nav>
+)
 
 const App = () => {
   const [step, setStep] = useState<Step>('participants')
@@ -19,6 +38,7 @@ const App = () => {
   const stepContent = useRef<HTMLDivElement>(null)
   const previousStep = useRef(step)
   const seats = useSyncExternalStore(subscribe, getSeats)
+  const isOrganizer = useSyncExternalStore(subscribeHash, getHash) === '#/organizer'
 
   useEffect(() => {
     if (previousStep.current === step) return
@@ -49,9 +69,21 @@ const App = () => {
     setStep('participants')
   }
 
+  if (isOrganizer) {
+    return (
+      <main className="min-h-screen text-ink">
+        <div className="mx-auto min-w-0 max-w-6xl px-4 pt-6 pb-6">
+          <Nav isOrganizer />
+          <Organizer />
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen text-ink print:min-h-0">
       <div className="mx-auto min-w-0 max-w-5xl px-4 pt-6 pb-6">
+        <Nav isOrganizer={false} />
         <EventHeader />
         <StepIndicator step={step} failed={step === 'result' && result?.ok === false} />
         <div ref={stepContent}>

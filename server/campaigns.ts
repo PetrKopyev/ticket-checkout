@@ -1,0 +1,170 @@
+import type { DatabaseSync } from 'node:sqlite'
+import { MailerDownError, type Mailer } from './mailer.ts'
+import { normalizeEmail, selectRecipients } from './recipients.ts'
+
+export type CampaignStatus = 'draft' | 'sending' | 'completed' | 'partial'
+export type DeliveryStatus = 'pending' | 'sent' | 'failed'
+
+export type CampaignView = {
+  id: number
+  eventId: string
+  eventTitle: string
+  startsAt: string
+  subject: string
+  body: string
+  status: CampaignStatus
+  total: number
+  sent: number
+  failed: number
+  pending: number
+  recipients: { email: string; status: DeliveryStatus; error: string | null; attempts: number; excluded: boolean }[]
+}
+
+export class CampaignStateError extends Error {
+  name = 'CampaignStateError'
+}
+
+type CampaignRow = {
+  id: number
+  event_id: string
+  title: string
+  starts_at: string
+  subject: string
+  body: string
+  status: CampaignStatus
+}
+
+type DeliveryRow = { email: string; status: DeliveryStatus; error: string | null; attempts: number; excluded: number }
+
+const activeSends = new Set<number>()
+
+const now = () => new Date().toISOString()
+
+export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null => {
+  const campaign = db.prepare(`
+    SELECT c.id, c.event_id, e.title, e.starts_at, c.subject, c.body, c.status
+    FROM campaigns c JOIN events e ON e.id = c.event_id
+    WHERE c.id = ?
+  `).get(id) as CampaignRow | undefined
+  if (!campaign) return null
+  const deliveries = db
+    .prepare('SELECT email, status, error, attempts, excluded FROM deliveries WHERE campaign_id = ? ORDER BY email')
+    .all(id) as DeliveryRow[]
+  const counted = deliveries.filter((delivery) => !delivery.excluded)
+  const count = (status: DeliveryStatus) => counted.filter((delivery) => delivery.status === status).length
+  return {
+    id: campaign.id,
+    eventId: campaign.event_id,
+    eventTitle: campaign.title,
+    startsAt: campaign.starts_at,
+    subject: campaign.subject,
+    body: campaign.body,
+    status: campaign.status,
+    total: counted.length,
+    sent: count('sent'),
+    failed: count('failed'),
+    pending: count('pending'),
+    recipients: deliveries.map((delivery) => ({ ...delivery, excluded: delivery.excluded === 1 })),
+  }
+}
+
+const mustGetCampaign = (db: DatabaseSync, id: number) => getCampaign(db, id) as CampaignView
+
+export const listCampaigns = (db: DatabaseSync) =>
+  db.prepare(`
+    SELECT c.id, e.title AS eventTitle, c.subject, c.status,
+      COUNT(d.email) FILTER (WHERE d.excluded = 0) AS total,
+      COUNT(d.email) FILTER (WHERE d.excluded = 0 AND d.status = 'sent') AS sent
+    FROM campaigns c
+    JOIN events e ON e.id = c.event_id
+    LEFT JOIN deliveries d ON d.campaign_id = c.id
+    GROUP BY c.id
+    ORDER BY c.id DESC
+  `).all() as { id: number; eventTitle: string; subject: string; status: CampaignStatus; total: number; sent: number }[]
+
+export const createDraft = (
+  db: DatabaseSync,
+  draft: { eventId: string; subject: string; body: string },
+): CampaignView => {
+  const insertDelivery = db.prepare("INSERT INTO deliveries (campaign_id, email, status) VALUES (?, ?, 'pending')")
+  db.exec('BEGIN')
+  const { lastInsertRowid } = db
+    .prepare("INSERT INTO campaigns (event_id, subject, body, status, created_at) VALUES (?, ?, ?, 'draft', ?)")
+    .run(draft.eventId, draft.subject, draft.body, now())
+  const id = Number(lastInsertRowid)
+  selectRecipients(db, draft.eventId).forEach((recipient) => insertDelivery.run(id, recipient.email))
+  db.exec('COMMIT')
+  return mustGetCampaign(db, id)
+}
+
+export const updateDraft = (
+  db: DatabaseSync,
+  id: number,
+  patch: { subject?: string; body?: string; excluded?: string[] },
+): CampaignView => {
+  if (mustGetCampaign(db, id).status !== 'draft') throw new CampaignStateError('Рассылка уже подтверждена')
+  db.exec('BEGIN')
+  if (patch.subject !== undefined) db.prepare('UPDATE campaigns SET subject = ? WHERE id = ?').run(patch.subject, id)
+  if (patch.body !== undefined) db.prepare('UPDATE campaigns SET body = ? WHERE id = ?').run(patch.body, id)
+  if (patch.excluded !== undefined) {
+    const excluded = JSON.stringify(patch.excluded.map(normalizeEmail))
+    db.prepare('UPDATE deliveries SET excluded = email IN (SELECT value FROM json_each(?)) WHERE campaign_id = ?')
+      .run(excluded, id)
+  }
+  db.exec('COMMIT')
+  return mustGetCampaign(db, id)
+}
+
+export const confirmCampaign = (db: DatabaseSync, id: number) => {
+  const { changes } = db
+    .prepare("UPDATE campaigns SET status = 'sending', confirmed_at = ? WHERE id = ? AND status = 'draft'")
+    .run(now(), id)
+  return { campaign: mustGetCampaign(db, id), started: changes > 0 }
+}
+
+export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: number): Promise<CampaignView> => {
+  const campaign = mustGetCampaign(db, campaignId)
+  if (campaign.status !== 'sending' || activeSends.has(campaignId)) return campaign
+  activeSends.add(campaignId)
+  try {
+    const emails = db.prepare(`
+      SELECT email FROM deliveries
+      WHERE campaign_id = ? AND excluded = 0 AND status IN ('pending', 'failed')
+      ORDER BY email
+    `).all(campaignId) as { email: string }[]
+    const markSent = db.prepare(`
+      UPDATE deliveries SET status = 'sent', sent_at = ?, attempts = attempts + 1, error = NULL
+      WHERE campaign_id = ? AND email = ?
+    `)
+    const markFailed = db.prepare(`
+      UPDATE deliveries SET status = 'failed', error = ?, attempts = attempts + 1
+      WHERE campaign_id = ? AND email = ?
+    `)
+    for (const { email } of emails) {
+      try {
+        await mailer.send({ campaignId, email, subject: campaign.subject, body: campaign.body })
+        markSent.run(now(), campaignId, email)
+      } catch (error) {
+        if (error instanceof MailerDownError) break
+        markFailed.run((error as Error).message, campaignId, email)
+      }
+    }
+    const { left } = db
+      .prepare("SELECT COUNT(*) AS left FROM deliveries WHERE campaign_id = ? AND excluded = 0 AND status != 'sent'")
+      .get(campaignId) as { left: number }
+    db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run(left === 0 ? 'completed' : 'partial', campaignId)
+  } finally {
+    activeSends.delete(campaignId)
+  }
+  return mustGetCampaign(db, campaignId)
+}
+
+export const resumeCampaign = async (db: DatabaseSync, mailer: Mailer, id: number): Promise<CampaignView> => {
+  const { changes } = db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ? AND status = 'partial'").run(id)
+  return changes > 0 ? sendPending(db, mailer, id) : mustGetCampaign(db, id)
+}
+
+export const recoverCampaigns = async (db: DatabaseSync, mailer: Mailer): Promise<void> => {
+  const campaigns = db.prepare("SELECT id FROM campaigns WHERE status = 'sending' ORDER BY id").all() as { id: number }[]
+  for (const { id } of campaigns) await sendPending(db, mailer, id)
+}
