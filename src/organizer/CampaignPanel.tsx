@@ -194,7 +194,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
       {!isDraft && (
         <div ref={progress} tabIndex={-1} className="mt-4 outline-none">
           <p aria-live="polite" className="font-semibold tabular-nums">
-            Отправлено {campaign.sent} из {campaign.total}
+            Отправлено {campaign.sent} из{'\u00a0'}{campaign.total}
           </p>
           <progress
             value={campaign.sent}

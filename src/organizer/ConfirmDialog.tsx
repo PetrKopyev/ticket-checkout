@@ -50,7 +50,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
           <div className="rounded-control border border-line bg-bg-soft p-3">
             <p className="break-words font-bold">{subject}</p>
             {/* Обрезка по высоте строк, без многоточия: строка не рвётся посреди слова. */}
-            <p className="mt-2 max-h-[3lh] overflow-hidden whitespace-pre-wrap break-words text-sm text-ink-soft">{body}</p>
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm text-ink-soft">{body}</p>
           </div>
           <p className="text-sm text-ink-muted">Отменить отправку после подтверждения нельзя.</p>
         </div>
