@@ -43,9 +43,11 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     ...init,
     headers: { 'Content-Type': 'application/json' },
   })
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.error ?? `Ошибка ${response.status}`)
-  return data
+  if (!response.ok) {
+    const data = await response.json().catch(() => null)
+    throw new Error(data?.error ?? `Ошибка ${response.status}`)
+  }
+  return response.json()
 }
 
 const post = <T>(path: string, body?: unknown) =>

@@ -6,8 +6,13 @@ import { alertClass, cardClass, inputClass, primaryButtonClass, secondaryButtonC
 
 const EXAMPLE = 'Переносим мастер-класс "Керамика" на 20 ноября, 19:00. Подготовь уведомление покупателям'
 
-const ChatPanel = ({ onCampaign }: { onCampaign: (id: number) => void }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+type ShownMessage = ChatMessage & { campaignId?: number }
+
+const ChatPanel = ({ onCampaign, onOpenCampaign }: {
+  onCampaign: (id: number) => void
+  onOpenCampaign: (id: number) => void
+}) => {
+  const [messages, setMessages] = useState<ShownMessage[]>([])
   const [text, setText] = useState('')
   const [isThinking, setIsThinking] = useState(false)
   const [error, setError] = useState('')
@@ -31,7 +36,7 @@ const ChatPanel = ({ onCampaign }: { onCampaign: (id: number) => void }) => {
     setIsThinking(true)
     try {
       const { reply, campaignId } = await sendMessage(message)
-      setMessages((previous) => [...previous, { role: 'assistant', content: reply }])
+      setMessages((previous) => [...previous, { role: 'assistant', content: reply, campaignId: campaignId ?? undefined }])
       if (campaignId !== null) onCampaign(campaignId)
     } catch (reason) {
       setError((reason as Error).message)
@@ -71,17 +76,30 @@ const ChatPanel = ({ onCampaign }: { onCampaign: (id: number) => void }) => {
             </button>
           </div>
         )}
-        {messages.map((message, index) => (
-          <p
+        {messages.map(({ role, content, campaignId }, index) => (
+          <div
             key={index}
-            className={[
-              'max-w-[85%] whitespace-pre-wrap break-words rounded-control px-4 py-2.5',
-              message.role === 'user' ? 'self-end bg-surface-muted' : 'self-start border border-line',
-            ].join(' ')}
+            className={`flex max-w-[85%] flex-col gap-2 ${role === 'user' ? 'self-end' : 'self-start'}`}
           >
-            <span className="sr-only">{message.role === 'user' ? 'Вы: ' : 'Помощник: '}</span>
-            {message.content}
-          </p>
+            <p
+              className={[
+                'whitespace-pre-wrap break-words rounded-control px-4 py-2.5',
+                role === 'user' ? 'bg-surface-muted' : 'border border-line',
+              ].join(' ')}
+            >
+              <span className="sr-only">{role === 'user' ? 'Вы: ' : 'Помощник: '}</span>
+              {content}
+            </p>
+            {campaignId !== undefined && (
+              <button
+                type="button"
+                onClick={() => onOpenCampaign(campaignId)}
+                className={`${secondaryButtonClass} self-start`}
+              >
+                Открыть черновик
+              </button>
+            )}
+          </div>
         ))}
       </div>
       <p role="status" className="min-h-5 text-sm text-violet-soft">{isThinking && 'Помощник думает…'}</p>

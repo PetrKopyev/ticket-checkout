@@ -6,7 +6,7 @@ import { selectRecipients } from '../recipients.ts'
 import { seed } from '../seed.ts'
 import { getHistory, sendAssistantMessage } from './assistant.ts'
 import { createFakeLlm } from './fake.ts'
-import { TOOLS, runTool } from './tools.ts'
+import { TOOLS, maskEmail, runTool } from './tools.ts'
 import type { LlmClient } from './types.ts'
 
 let db: DatabaseSync
@@ -47,6 +47,18 @@ describe('assistant', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
   })
 
+  it('ошибка инструмента попадает в историю и в ответ, следующий запрос работает', async () => {
+    db.exec("CREATE TRIGGER broken BEFORE INSERT ON campaigns BEGIN SELECT RAISE(ABORT, 'диск полон'); END")
+    const failed = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс по керамике на 20 ноября, 19:00')
+    expect(failed).toEqual({ reply: 'Не получилось создать черновик: Инструмент завершился с ошибкой', campaignId: null })
+    const tools = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool'").all() as { content: string }[]
+    expect(JSON.parse(tools[2].content)).toEqual({ error: 'Инструмент завершился с ошибкой' })
+
+    db.exec('DROP TRIGGER broken')
+    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс по керамике на 20 ноября, 19:00')
+    expect(getCampaign(db, campaignId as number)?.total).toBe(6)
+  })
+
   it('останавливается после шести шагов', async () => {
     let calls = 0
     const looping: LlmClient = {
@@ -79,10 +91,11 @@ describe('tools', () => {
     expect(runTool(db, 'send_campaign', '{}')).toHaveProperty('error')
   })
 
-  it('считают получателей по уникальным email с действующими билетами', () => {
+  it('считают получателей по уникальным email и не раскрывают адреса', () => {
     expect(runTool(db, 'list_recipients', '{"event_id":"ceramics"}')).toEqual({
       count: 6,
-      emails: selectRecipients(db, 'ceramics').map((recipient) => recipient.email),
+      maskedEmails: selectRecipients(db, 'ceramics').map((recipient) => maskEmail(recipient.email)),
     })
+    expect(maskEmail('anna@example.com')).toBe('a***@example.com')
   })
 })

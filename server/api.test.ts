@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApiHandler } from './api.ts'
 import { openDb } from './db.ts'
 import { createFakeLlm } from './llm/fake.ts'
-import { createDbMailer } from './mailer.ts'
+import type { LlmClient } from './llm/types.ts'
+import { createDbMailer, type Mailer } from './mailer.ts'
 import { seed } from './seed.ts'
 
 let db: DatabaseSync
@@ -39,13 +40,24 @@ const waitFor = (id: number, status: string) =>
 
 const outboxCount = async () => (await request('/api/outbox')).data.length
 
-beforeEach(async () => {
-  db = openDb(':memory:')
-  seed(db)
-  const handler = createApiHandler(db, createFakeLlm(), createDbMailer(db))
+const listen = async (llm: LlmClient = createFakeLlm(), mailer: Mailer = createDbMailer(db)) => {
+  server?.close()
+  const handler = createApiHandler(db, llm, mailer)
   server = createServer((req, res) => handler(req, res, () => res.writeHead(404).end()))
   await new Promise<void>((resolve) => server.listen(0, resolve))
   base = `http://localhost:${(server.address() as AddressInfo).port}`
+}
+
+const gate = () => {
+  let open = () => {}
+  const opened = new Promise<void>((resolve) => { open = resolve })
+  return { opened, open: () => open() }
+}
+
+beforeEach(async () => {
+  db = openDb(':memory:')
+  seed(db)
+  await listen()
 })
 
 afterEach(() => {
@@ -110,6 +122,85 @@ describe('api', () => {
     expect((await request('/api/assistant/message', 'POST', '{oops')).status).toBe(400)
     expect((await request('/api/assistant/message', 'POST', { text: ' ' })).status).toBe(400)
     expect((await request('/api/demo/mailer', 'POST', { down: 'yes' })).status).toBe(400)
+  })
+
+  it('проверяет поля PATCH', async () => {
+    const id = await createDraft()
+    const patch = (body: object) => request(`/api/campaigns/${id}`, 'PATCH', body)
+    expect((await patch({ subject: 1 })).status).toBe(400)
+    expect((await patch({ body: null })).status).toBe(400)
+    expect((await patch({ excluded: 'anna@example.com' })).status).toBe(400)
+    expect((await patch({ excluded: [1] })).status).toBe(400)
+    expect((await patch({ subject: 'а'.repeat(201) })).status).toBe(400)
+    expect((await patch({ body: 'а'.repeat(5001) })).status).toBe(400)
+    expect((await patch({ subject: 'а'.repeat(200), body: 'а'.repeat(5000) })).status).toBe(200)
+  })
+
+  it('ограничивает тип, размер тела и длину сообщения', async () => {
+    const plain = await fetch(`${base}/api/demo/reset`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{}' })
+    expect(plain.status).toBe(415)
+    expect((await fetch(`${base}/api/demo/reset`, { method: 'POST' })).status).toBe(415)
+    expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(100_000) })).status).toBe(413)
+    expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(2001) })).status).toBe(400)
+    expect((await request('/api/campaigns')).data).toEqual([])
+  })
+
+  it('confirm и resume несуществующей рассылки — 404', async () => {
+    expect((await request('/api/campaigns/999/confirm', 'POST')).status).toBe(404)
+    expect((await request('/api/campaigns/999/resume', 'POST')).status).toBe(404)
+  })
+
+  it('resume не из partial ничего не меняет', async () => {
+    const id = await createDraft()
+    const { status, data } = await request(`/api/campaigns/${id}/resume`, 'POST')
+    expect(status).toBe(200)
+    expect(data.status).toBe('draft')
+    expect(await outboxCount()).toBe(0)
+  })
+
+  it('рассылку без получателей не подтвердить', async () => {
+    const id = await createDraft()
+    const { data } = await request(`/api/campaigns/${id}`)
+    const emails = data.recipients.map((recipient: { email: string }) => recipient.email)
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: emails })
+    expect(await request(`/api/campaigns/${id}/confirm`, 'POST')).toEqual({ status: 409, data: { error: 'Нет получателей' } })
+  })
+
+  it('повторный confirm во время отправки не запускает вторую', async () => {
+    const mailer = createDbMailer(db)
+    const release = gate()
+    let calls = 0
+    await listen(createFakeLlm(), {
+      send: async (mail) => {
+        calls++
+        await release.opened
+        await mailer.send(mail)
+      },
+    })
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    expect((await request(`/api/campaigns/${id}/confirm`, 'POST')).data.status).toBe('sending')
+    release.open()
+    await waitFor(id, 'completed')
+    expect(calls).toBe(6)
+    expect(await outboxCount()).toBe(6)
+  })
+
+  it('падение LLM — 502', async () => {
+    await listen({ chat: async () => { throw new Error('LLM ответил 500') } })
+    expect((await request('/api/assistant/message', 'POST', { text: 'Привет' })).status).toBe(502)
+  })
+
+  it('пока помощник отвечает, второе сообщение — 409', async () => {
+    const fake = createFakeLlm()
+    const release = gate()
+    await listen({ chat: async (messages, tools) => { await release.opened; return fake.chat(messages, tools) } })
+    const first = request('/api/assistant/message', 'POST', { text: 'Привет' })
+    await vi.waitFor(() => expect(db.prepare('SELECT COUNT(*) AS n FROM chat_messages').get()).toEqual({ n: 1 }))
+    expect(await request('/api/assistant/message', 'POST', { text: 'Ещё' })).toEqual({ status: 409, data: { error: 'Помощник занят' } })
+    release.open()
+    expect((await first).status).toBe(200)
+    expect((await request('/api/assistant/message', 'POST', { text: 'Снова' })).status).toBe(200)
   })
 
   it('сбрасывает демо', async () => {

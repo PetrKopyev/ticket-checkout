@@ -1,27 +1,47 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { listCampaigns } from './client'
+import type { CampaignSummary } from './client'
 import ChatPanel from './ChatPanel'
 import CampaignPanel from './CampaignPanel'
 import OutboxList from './OutboxList'
 import DemoPanel from './DemoPanel'
-import { cardClass } from '../components/ui'
+import { cardClass, secondaryButtonClass } from '../components/ui'
+
+const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'sending' || campaign.status === 'partial'
 
 const Organizer = () => {
   const [campaignId, setCampaignId] = useState<number | null>(null)
+  const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
+  const [unfinishedId, setUnfinishedId] = useState<number | null>(null)
   const [resetKey, setResetKey] = useState(0)
   const [outboxKey, setOutboxKey] = useState(0)
+  const campaignArea = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    listCampaigns().then((campaigns) => setCampaignId(campaigns[0]?.id ?? null))
+    listCampaigns().then((list) => {
+      setCampaigns(list)
+      setCampaignId(list[0]?.id ?? null)
+      setUnfinishedId(list.find(isUnfinished)?.id ?? null)
+    })
   }, [resetKey])
 
-  const reloadOutbox = useCallback(() => setOutboxKey((previous) => previous + 1), [])
+  const reloadOutbox = useCallback(() => {
+    setOutboxKey((previous) => previous + 1)
+    listCampaigns().then(setCampaigns)
+  }, [])
 
   const reset = () => {
     setCampaignId(null)
     setResetKey((previous) => previous + 1)
-    reloadOutbox()
+    setOutboxKey((previous) => previous + 1)
   }
+
+  const openCampaign = (id: number) => {
+    setCampaignId(id)
+    campaignArea.current?.focus()
+  }
+
+  const unfinished = campaigns.find((campaign) => campaign.id === unfinishedId && isUnfinished(campaign))
 
   return (
     <>
@@ -35,11 +55,29 @@ const Organizer = () => {
           Опишите помощнику, что изменилось, — он подготовит письмо. Отправка только после вашего подтверждения.
         </p>
       </header>
+      {unfinished && (
+        <div
+          role="status"
+          className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-red/40 bg-red/10 p-4"
+        >
+          <div className="min-w-0">
+            <p className="font-semibold text-red tabular-nums">
+              Рассылка не завершена: {unfinished.sent} из {unfinished.total}
+            </p>
+            <p className="break-words text-sm text-ink-soft">{unfinished.subject}</p>
+          </div>
+          <button type="button" onClick={() => openCampaign(unfinished.id)} className={secondaryButtonClass}>
+            Открыть рассылку
+          </button>
+        </div>
+      )}
       <div className="grid min-w-0 items-start gap-6 lg:grid-cols-2">
-        <ChatPanel key={resetKey} onCampaign={setCampaignId} />
+        <ChatPanel key={resetKey} onCampaign={setCampaignId} onOpenCampaign={openCampaign} />
         <div className="grid min-w-0 gap-6">
-          <CampaignPanel key={campaignId} campaignId={campaignId} onSent={reloadOutbox} />
-          <OutboxList reloadKey={outboxKey} />
+          <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">
+            <CampaignPanel key={campaignId} campaignId={campaignId} onSent={reloadOutbox} />
+          </div>
+          <OutboxList campaigns={campaigns} reloadKey={outboxKey} onReload={reloadOutbox} />
         </div>
       </div>
       <DemoPanel key={resetKey} onReset={reset} />

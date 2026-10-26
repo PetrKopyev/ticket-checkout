@@ -29,6 +29,15 @@ const saveMessage = (db: DatabaseSync, message: ChatMessage) => {
     .run(message.role, message.content ?? '', toolCalls, message.role === 'tool' ? message.toolCallId : null, new Date().toISOString())
 }
 
+const runToolSafely = (db: DatabaseSync, name: string, args: string): object => {
+  try {
+    return runTool(db, name, args)
+  } catch (error) {
+    console.error(error)
+    return { error: 'Инструмент завершился с ошибкой' }
+  }
+}
+
 export const getHistory = (db: DatabaseSync) =>
   db.prepare("SELECT role, content FROM chat_messages WHERE role IN ('user', 'assistant') AND content != '' ORDER BY id")
     .all() as { role: 'user' | 'assistant'; content: string }[]
@@ -44,7 +53,7 @@ export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, tex
     messages.push(answer)
     if (!reply.toolCalls.length) return { reply: reply.content ?? '', campaignId }
     for (const call of reply.toolCalls) {
-      const result = runTool(db, call.name, call.arguments)
+      const result = runToolSafely(db, call.name, call.arguments)
       if (call.name === 'create_draft_campaign' && 'campaign_id' in result) campaignId = result.campaign_id as number
       const message: ChatMessage = { role: 'tool', content: JSON.stringify(result), toolCallId: call.id }
       saveMessage(db, message)

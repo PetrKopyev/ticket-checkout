@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { extname, join, normalize } from 'node:path'
-import { getApiHandler } from './vitePlugin.ts'
+import { getApp } from './app.ts'
 
 const DIST = 'dist'
 const PORT = Number(process.env.PORT ?? 3001)
@@ -17,7 +17,7 @@ const TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 }
 
-const api = getApiHandler()
+const api = getApp()
 
 const isFile = (path: string) => existsSync(path) && statSync(path).isFile()
 
@@ -32,4 +32,4 @@ createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' })
     res.end(readFileSync(file))
   })
-}).listen(PORT, () => console.log(`API: http://localhost:${PORT}`))
+}).listen(PORT, '127.0.0.1', () => console.log(`API: http://127.0.0.1:${PORT}`))

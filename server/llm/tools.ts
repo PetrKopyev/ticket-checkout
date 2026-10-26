@@ -20,7 +20,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'list_recipients',
-    description: 'Покупатели мероприятия с действующими билетами: число и уникальные email',
+    description: 'Покупатели мероприятия с действующими билетами: число и скрытые email',
     parameters: { type: 'object', properties: eventIdParam, required: ['event_id'] },
   },
   {
@@ -42,6 +42,11 @@ const toEvent = (row: EventRow) => ({ id: row.id, title: row.title, startsAt: ro
 
 const findEvent = (db: DatabaseSync, id: unknown) =>
   db.prepare('SELECT id, title, starts_at, place FROM events WHERE id = ?').get(String(id)) as EventRow | undefined
+
+export const maskEmail = (email: string) => {
+  const [name, domain] = email.split('@')
+  return `${name[0]}***@${domain}`
+}
 
 const text = (value: unknown) => typeof value === 'string' && value.trim() !== ''
 
@@ -68,8 +73,8 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string): objec
   if (!event) return { error: 'Мероприятие не найдено' }
   if (name === 'get_event') return toEvent(event)
   if (name === 'list_recipients') {
-    const emails = selectRecipients(db, event.id).map((recipient) => recipient.email)
-    return { count: emails.length, emails }
+    const emails = selectRecipients(db, event.id).map((recipient) => maskEmail(recipient.email))
+    return { count: emails.length, maskedEmails: emails }
   }
   if (!text(args.subject) || !text(args.body)) return { error: 'Нужны непустые subject и body' }
   const campaign = createDraft(db, { eventId: event.id, subject: String(args.subject), body: String(args.body) })

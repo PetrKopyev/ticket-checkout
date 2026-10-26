@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { transaction } from './db.ts'
 import { MailerDownError, type Mailer } from './mailer.ts'
 import { normalizeEmail, selectRecipients } from './recipients.ts'
 
@@ -87,13 +88,13 @@ export const createDraft = (
   draft: { eventId: string; subject: string; body: string },
 ): CampaignView => {
   const insertDelivery = db.prepare("INSERT INTO deliveries (campaign_id, email, status) VALUES (?, ?, 'pending')")
-  db.exec('BEGIN')
-  const { lastInsertRowid } = db
-    .prepare("INSERT INTO campaigns (event_id, subject, body, status, created_at) VALUES (?, ?, ?, 'draft', ?)")
-    .run(draft.eventId, draft.subject, draft.body, now())
-  const id = Number(lastInsertRowid)
-  selectRecipients(db, draft.eventId).forEach((recipient) => insertDelivery.run(id, recipient.email))
-  db.exec('COMMIT')
+  const id = transaction(db, () => {
+    const { lastInsertRowid } = db
+      .prepare("INSERT INTO campaigns (event_id, subject, body, status, created_at) VALUES (?, ?, ?, 'draft', ?)")
+      .run(draft.eventId, draft.subject, draft.body, now())
+    selectRecipients(db, draft.eventId).forEach((recipient) => insertDelivery.run(lastInsertRowid, recipient.email))
+    return Number(lastInsertRowid)
+  })
   return mustGetCampaign(db, id)
 }
 
@@ -103,19 +104,21 @@ export const updateDraft = (
   patch: { subject?: string; body?: string; excluded?: string[] },
 ): CampaignView => {
   if (mustGetCampaign(db, id).status !== 'draft') throw new CampaignStateError('Рассылка уже подтверждена')
-  db.exec('BEGIN')
-  if (patch.subject !== undefined) db.prepare('UPDATE campaigns SET subject = ? WHERE id = ?').run(patch.subject, id)
-  if (patch.body !== undefined) db.prepare('UPDATE campaigns SET body = ? WHERE id = ?').run(patch.body, id)
-  if (patch.excluded !== undefined) {
-    const excluded = JSON.stringify(patch.excluded.map(normalizeEmail))
-    db.prepare('UPDATE deliveries SET excluded = email IN (SELECT value FROM json_each(?)) WHERE campaign_id = ?')
-      .run(excluded, id)
-  }
-  db.exec('COMMIT')
+  transaction(db, () => {
+    if (patch.subject !== undefined) db.prepare('UPDATE campaigns SET subject = ? WHERE id = ?').run(patch.subject, id)
+    if (patch.body !== undefined) db.prepare('UPDATE campaigns SET body = ? WHERE id = ?').run(patch.body, id)
+    if (patch.excluded !== undefined) {
+      const excluded = JSON.stringify(patch.excluded.map(normalizeEmail))
+      db.prepare('UPDATE deliveries SET excluded = email IN (SELECT value FROM json_each(?)) WHERE campaign_id = ?')
+        .run(excluded, id)
+    }
+  })
   return mustGetCampaign(db, id)
 }
 
 export const confirmCampaign = (db: DatabaseSync, id: number) => {
+  const campaign = mustGetCampaign(db, id)
+  if (campaign.status === 'draft' && campaign.total === 0) throw new CampaignStateError('Нет получателей')
   const { changes } = db
     .prepare("UPDATE campaigns SET status = 'sending', confirmed_at = ? WHERE id = ? AND status = 'draft'")
     .run(now(), id)
@@ -159,9 +162,9 @@ export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: 
   return mustGetCampaign(db, campaignId)
 }
 
-export const resumeCampaign = async (db: DatabaseSync, mailer: Mailer, id: number): Promise<CampaignView> => {
+export const resumeCampaign = (db: DatabaseSync, id: number) => {
   const { changes } = db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ? AND status = 'partial'").run(id)
-  return changes > 0 ? sendPending(db, mailer, id) : mustGetCampaign(db, id)
+  return { campaign: mustGetCampaign(db, id), started: changes > 0 }
 }
 
 export const recoverCampaigns = async (db: DatabaseSync, mailer: Mailer): Promise<void> => {

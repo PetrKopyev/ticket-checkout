@@ -59,7 +59,19 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `
 
-export const openDb = (path: string): DatabaseSync => {
+export const transaction = <T>(db: DatabaseSync, fn: () => T): T => {
+  db.exec('BEGIN')
+  try {
+    const result = fn()
+    db.exec('COMMIT')
+    return result
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export const openDb =(path: string): DatabaseSync => {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')

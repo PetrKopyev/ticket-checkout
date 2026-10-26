@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { transaction } from './db.ts'
 
 const EVENTS = [
   { id: 'ceramics', title: 'Мастер-класс "Керамика"', startsAt: '2026-11-13T19:00', place: 'Москва' },
@@ -28,28 +29,32 @@ const PURCHASES: [eventId: string, buyerName: string, email: string, status: 'ac
   ['fonts', 'Глеб Орлов', 'gleb@example.com', 'active', 1],
 ]
 
-export const seed = (db: DatabaseSync): void => {
-  if (db.prepare('SELECT 1 FROM events LIMIT 1').get()) return
+const insertData = (db: DatabaseSync) => {
   const insertEvent = db.prepare('INSERT INTO events (id, title, starts_at, place) VALUES (?, ?, ?, ?)')
   const insertPurchase = db.prepare(
     'INSERT INTO purchases (event_id, buyer_name, email, status, qty) VALUES (?, ?, ?, ?, ?)',
   )
-  db.exec('BEGIN')
   EVENTS.forEach((event) => insertEvent.run(event.id, event.title, event.startsAt, event.place))
   PURCHASES.forEach((purchase) => insertPurchase.run(...purchase))
-  db.exec('COMMIT')
+}
+
+export const seed = (db: DatabaseSync): void => {
+  if (db.prepare('SELECT 1 FROM events LIMIT 1').get()) return
+  transaction(db, () => insertData(db))
 }
 
 export const resetDemo = (db: DatabaseSync): void => {
-  db.exec(`
-    DELETE FROM deliveries;
-    DELETE FROM campaigns;
-    DELETE FROM outbox;
-    DELETE FROM chat_messages;
-    DELETE FROM purchases;
-    DELETE FROM events;
-    INSERT INTO settings (key, value) VALUES ('mailer_down', '0')
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value;
-  `)
-  seed(db)
+  transaction(db, () => {
+    db.exec(`
+      DELETE FROM deliveries;
+      DELETE FROM campaigns;
+      DELETE FROM outbox;
+      DELETE FROM chat_messages;
+      DELETE FROM purchases;
+      DELETE FROM events;
+      INSERT INTO settings (key, value) VALUES ('mailer_down', '0')
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+    `)
+    insertData(db)
+  })
 }

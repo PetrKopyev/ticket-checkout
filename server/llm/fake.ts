@@ -56,8 +56,9 @@ export const createFakeLlm = (): LlmClient => ({
     }
     const recipients = result('list_recipients') as { count: number } | undefined
     if (!recipients) return call('list_recipients', { event_id: event.id })
-    const draft = result('create_draft_campaign') as { recipients_count: number } | undefined
+    const draft = result('create_draft_campaign') as { recipients_count: number; error?: string } | undefined
     if (!draft) return call('create_draft_campaign', { event_id: event.id, ...letter(event, text) })
+    if (draft.error) return say(`Не получилось создать черновик: ${draft.error}`)
     return say(`Черновик готов: ${draft.recipients_count} получателей. Проверьте письмо и подтвердите отправку.`)
   },
 })

@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { confirmCampaign, getCampaign, resumeCampaign, updateCampaign } from './client'
 import type { Campaign, CampaignStatus } from './client'
+import ConfirmDialog from './ConfirmDialog'
+import EmailPreview from './EmailPreview'
 import RecipientsTable from './RecipientsTable'
+import { validate } from './validate'
+import { plural } from '../format'
 import {
   alertClass,
   cardClass,
@@ -10,7 +14,6 @@ import {
   inputClass,
   primaryButtonClass,
   secondaryButtonClass,
-  stepHeadingClass,
 } from '../components/ui'
 
 const statusLabels: Record<CampaignStatus, string> = {
@@ -35,7 +38,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
   const [isBusy, setIsBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
-  const confirmHeading = useRef<HTMLHeadingElement>(null)
+  const [pollAttempt, setPollAttempt] = useState(0)
 
   const apply = (next: Campaign) => {
     setCampaign(next)
@@ -51,18 +54,25 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
 
   useEffect(() => {
     if (campaign?.status !== 'sending') return
-    const timer = setTimeout(() => getCampaign(campaign.id).then(setCampaign), 1000)
+    const timer = setTimeout(() => {
+      getCampaign(campaign.id).then(
+        (next) => {
+          setError('')
+          setCampaign(next)
+        },
+        (reason: Error) => {
+          setError(reason.message)
+          setPollAttempt((attempt) => attempt + 1)
+        },
+      )
+    }, 1000)
     return () => clearTimeout(timer)
-  }, [campaign])
+  }, [campaign, pollAttempt])
 
   const sent = campaign?.sent
   useEffect(() => {
     if (sent !== undefined) onSent()
   }, [sent, onSent])
-
-  useEffect(() => {
-    if (isConfirming) confirmHeading.current?.focus()
-  }, [isConfirming])
 
   if (!campaign) {
     return (
@@ -78,7 +88,10 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
   const isDirty = subject !== campaign.subject
     || body !== campaign.body
     || [...excluded].sort().join() !== excludedOf(campaign).sort().join()
-  const recipientsCount = campaign.recipients.length - excluded.length
+  const addressCount = campaign.recipients.length
+  const recipientsCount = addressCount - excluded.length
+  const errors = validate({ subject, body, recipientsCount })
+  const unsentCount = campaign.total - campaign.sent
 
   const run = async (action: () => Promise<Campaign>) => {
     setIsBusy(true)
@@ -112,14 +125,19 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
 
   return (
     <section aria-labelledby="campaign-heading" className={cardClass}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="campaign-heading" className="text-xl">Рассылка</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-violet-soft">Рассылка</p>
+          <h2 id="campaign-heading" className="mt-1 break-words text-xl">{campaign.eventTitle}</h2>
+        </div>
         <p className={campaign.status === 'partial' ? dangerChipClass : chipClass}>
           {statusLabels[campaign.status]}
         </p>
       </div>
-      <p className="mt-2 break-words font-semibold">{campaign.eventTitle}</p>
-      <p className="text-sm text-ink-muted">{formatDate(campaign.startsAt)}</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        {formatDate(campaign.startsAt)} · {addressCount}{' '}
+        {plural(addressCount, 'уникальный адрес', 'уникальных адреса', 'уникальных адресов')}
+      </p>
 
       {isDraft ? (
         <div className="mt-4">
@@ -127,6 +145,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
           <input
             id="campaign-subject"
             value={subject}
+            aria-invalid={!subject.trim()}
             onChange={(event) => {
               setSubject(event.target.value)
               setSaved(false)
@@ -138,18 +157,17 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
             id="campaign-body"
             rows={8}
             value={body}
+            aria-invalid={!body.trim()}
             onChange={(event) => {
               setBody(event.target.value)
               setSaved(false)
             }}
             className={inputClass}
           />
+          <EmailPreview heading="Так выглядит письмо" subject={subject} body={body} />
         </div>
       ) : (
-        <div className="mt-4 rounded-control border border-line p-4">
-          <p className="break-words font-bold">{campaign.subject}</p>
-          <p className="mt-2 whitespace-pre-wrap break-words text-ink-soft">{campaign.body}</p>
-        </div>
+        <EmailPreview heading="Письмо" subject={campaign.subject} body={campaign.body} />
       )}
 
       {!isDraft && (
@@ -161,9 +179,9 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
             value={campaign.sent}
             max={campaign.total}
             aria-label="Прогресс отправки"
-            className="mt-2 h-2 w-full accent-violet"
+            className="mt-2 h-2 w-full appearance-none overflow-hidden rounded-full bg-surface-muted accent-violet [&::-webkit-progress-bar]:bg-surface-muted [&::-webkit-progress-value]:bg-violet [&::-moz-progress-bar]:bg-violet"
           />
-          {campaign.status === 'completed' && <p className="mt-2 text-green">Все письма отправлены</p>}
+          {campaign.status === 'completed' && <p className="mt-2 text-ink-soft">Все письма отправлены</p>}
         </div>
       )}
 
@@ -179,8 +197,11 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
             onClick={() => run(() => resumeCampaign(campaign.id))}
             className={`${primaryButtonClass} mt-3`}
           >
-            Продолжить отправку
+            Повторить для неудавшихся ({unsentCount})
           </button>
+          <p className="mt-2 text-sm font-normal text-ink-soft">
+            Тем, кому письмо уже отправлено, оно повторно не уйдёт.
+          </p>
         </div>
       )}
 
@@ -193,47 +214,37 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
         onToggle={toggle}
       />
 
-      {isDraft && !isConfirming && (
+      {isDraft && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button type="button" disabled={isBusy || !isDirty} onClick={save} className={secondaryButtonClass}>
             Сохранить
           </button>
           <button
             type="button"
-            disabled={isBusy || recipientsCount === 0}
+            disabled={isBusy || errors.length > 0}
+            aria-describedby="send-hint"
             onClick={() => setIsConfirming(true)}
             className={primaryButtonClass}
           >
             Подтвердить и отправить
           </button>
+          {errors.length > 0 && <p id="send-hint" className="text-sm text-red">{errors[0]}</p>}
           <p role="status" className="text-sm text-green">{saved && !isDirty && 'Сохранено'}</p>
         </div>
       )}
 
       {isDraft && isConfirming && (
-        <div
-          role="alertdialog"
-          aria-labelledby="confirm-heading"
-          className="mt-4 rounded-control border border-violet-bright/50 bg-surface-muted p-4"
-        >
-          <h3 id="confirm-heading" ref={confirmHeading} tabIndex={-1} className={stepHeadingClass}>
-            Отправить письмо {recipientsCount} адресатам?
-          </h3>
-          <p className="mt-1 text-sm text-ink-muted">Отменить отправку после подтверждения нельзя.</p>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <button type="button" disabled={isBusy} onClick={send} className={primaryButtonClass}>
-              Да, отправить
-            </button>
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => setIsConfirming(false)}
-              className={secondaryButtonClass}
-            >
-              Отмена
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          eventTitle={campaign.eventTitle}
+          date={formatDate(campaign.startsAt)}
+          subject={subject}
+          body={body}
+          recipientsCount={recipientsCount}
+          excludedCount={excluded.length}
+          isBusy={isBusy}
+          onConfirm={send}
+          onCancel={() => setIsConfirming(false)}
+        />
       )}
     </section>
   )
