@@ -2,15 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { validate } from './validate'
 
 describe('validate', () => {
-  it('пропускает заполненный черновик', () => {
-    expect(validate({ subject: 'Перенос', body: 'Текст', recipientsCount: 3 })).toEqual([])
-  })
-
-  it('находит пустую тему, пустой текст и отсутствие получателей', () => {
-    expect(validate({ subject: '  ', body: '\n', recipientsCount: 0 })).toEqual([
-      'Укажите тему письма',
-      'Добавьте текст письма',
-      'Нет ни одного получателя',
-    ])
+  it.each([
+    ['ошибок нет', { subject: 'Перенос', body: 'Текст', recipientsCount: 3 }, []],
+    ['только тема', { subject: 'Перенос', body: '', recipientsCount: 3 }, ['Добавьте текст письма']],
+    ['только текст', { subject: '', body: 'Текст', recipientsCount: 3 }, ['Укажите тему письма']],
+    ['тема из пробелов', { subject: '   ', body: 'Текст', recipientsCount: 3 }, ['Укажите тему письма']],
+    ['ноль получателей', { subject: 'Перенос', body: 'Текст', recipientsCount: 0 }, ['Нет ни одного получателя']],
+  ])('%s', (_, draft, expected) => {
+    expect(validate(draft)).toEqual(expected)
   })
 })

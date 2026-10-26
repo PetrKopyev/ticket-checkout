@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { plural } from '../format'
-import { primaryButtonClass, secondaryButtonClass } from '../components/ui'
+import { alertClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
-const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, excludedCount, isBusy, onConfirm, onCancel }: {
+const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, excludedCount, isBusy, error, onConfirm, onClose }: {
   eventTitle: string
   date: string
   subject: string
@@ -10,8 +10,9 @@ const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, exclu
   recipientsCount: number
   excludedCount: number
   isBusy: boolean
-  onConfirm: () => void
-  onCancel: () => void
+  error: string
+  onConfirm: () => Promise<boolean>
+  onClose: (sent: boolean) => void
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
@@ -21,13 +22,18 @@ const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, exclu
     cancel.current?.focus()
   }, [])
 
+  const confirm = async () => {
+    if (await onConfirm()) dialog.current?.close('sent')
+  }
+
   return (
     <dialog
       ref={dialog}
       role="alertdialog"
       aria-labelledby="confirm-heading"
       aria-describedby="confirm-summary"
-      onClose={onCancel}
+      onCancel={(event) => isBusy && event.preventDefault()}
+      onClose={(event) => onClose(event.currentTarget.returnValue === 'sent')}
       className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-3xl border border-line-strong bg-card p-5 text-ink shadow-card backdrop:bg-black/70"
     >
       <h2 id="confirm-heading" className="text-xl">Отправить рассылку?</h2>
@@ -46,11 +52,18 @@ const ConfirmDialog = ({ eventTitle, date, subject, body, recipientsCount, exclu
         </div>
         <p className="text-sm text-ink-muted">Отменить отправку после подтверждения нельзя.</p>
       </div>
+      {error && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
       <div className="mt-4 flex flex-wrap gap-3">
-        <button ref={cancel} type="button" disabled={isBusy} onClick={onCancel} className={secondaryButtonClass}>
+        <button
+          ref={cancel}
+          type="button"
+          disabled={isBusy}
+          onClick={() => dialog.current?.close()}
+          className={secondaryButtonClass}
+        >
           Отмена
         </button>
-        <button type="button" disabled={isBusy} onClick={onConfirm} className={primaryButtonClass}>
+        <button type="button" disabled={isBusy} onClick={confirm} className={primaryButtonClass}>
           Отправить {recipientsCount} {plural(recipientsCount, 'письмо', 'письма', 'писем')}
         </button>
       </div>

@@ -23,7 +23,7 @@ export const getApp = (dbPath = process.env.DB_PATH ?? 'data/app.db') => {
   if (existing) return existing
   const db = openDb(dbPath)
   seed(db)
-  const mailer = createDbMailer(db)
+  const mailer = createDbMailer(db, { delayMs: Number(process.env.MAIL_DELAY_MS ?? 400) })
   recoverCampaigns(db, mailer).catch(console.error)
   const handler = createApiHandler(db, createLlm(), mailer)
   apps.set(dbPath, handler)

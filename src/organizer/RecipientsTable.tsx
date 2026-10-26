@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Recipient } from './client'
+import { summarize } from './status'
 import { secondaryButtonClass } from '../components/ui'
 
 const statusView = {
@@ -20,24 +21,26 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
 }) => {
   const [filter, setFilter] = useState<Filter>('all')
 
-  const active = recipients.filter((recipient) => !excluded.includes(recipient.email))
-  const countOf = (status: Recipient['status']) => active.filter((recipient) => recipient.status === status).length
-  const failed = active.filter((recipient) => recipient.status === 'failed')
-  const excludedRecipients = recipients.filter((recipient) => excluded.includes(recipient.email))
-  const shown = { all: recipients, failed, excluded: excludedRecipients }[filter]
+  const summary = summarize(recipients, excluded)
+  const lists = {
+    all: recipients,
+    failed: recipients.filter((recipient) => recipient.status === 'failed' && !excluded.includes(recipient.email)),
+    excluded: recipients.filter((recipient) => excluded.includes(recipient.email)),
+  }
+  if (lists[filter].length === 0 && filter !== 'all') setFilter('all')
+  const shown = lists[filter]
 
   const filters: { value: Filter; label: string }[] = [
-    { value: 'all', label: `Все (${recipients.length})` },
-    { value: 'failed', label: `Ошибки (${failed.length})` },
-    { value: 'excluded', label: `Исключённые (${excludedRecipients.length})` },
+    { value: 'all', label: `Все (${lists.all.length})` },
+    { value: 'failed', label: `Ошибки (${lists.failed.length})` },
+    { value: 'excluded', label: `Исключённые (${lists.excluded.length})` },
   ]
 
   return (
     <div className="mt-6">
       <h3 id="recipients-heading" className="text-base">Получатели</h3>
       <p className="mt-1 text-sm text-ink-soft tabular-nums">
-        Отправлено {countOf('sent')}, ошибок {failed.length}, ожидает {countOf('pending')},
-        исключено {excludedRecipients.length}
+        Отправлено {summary.sent}, ошибок {summary.failed}, ожидает {summary.pending}, исключено {summary.excluded}
       </p>
       <div role="group" aria-label="Показать получателей" className="mt-3 flex flex-wrap gap-2">
         {filters.map((item) => (
@@ -45,6 +48,7 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
             key={item.value}
             type="button"
             aria-pressed={filter === item.value}
+            disabled={lists[item.value].length === 0}
             onClick={() => setFilter(item.value)}
             className={filterButtonClass}
           >
@@ -56,7 +60,7 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
         <thead className="text-ink-muted">
           <tr>
             <th scope="col" className="py-2 pr-3 font-medium">Email</th>
-            <th scope="col" className="w-32 py-2 font-medium">{editable ? 'Исключить' : 'Статус'}</th>
+            <th scope="col" className="w-2/5 py-2 font-medium">{editable ? 'Исключить' : 'Статус'}</th>
           </tr>
         </thead>
         <tbody>
@@ -73,9 +77,9 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
                 <td className={`break-all py-2 pr-3 align-middle ${isExcluded ? 'text-ink-muted line-through' : ''}`}>
                   {recipient.email}
                 </td>
-                <td className="py-2 align-middle">
+                <td className="break-words py-2 align-middle">
                   {editable && (
-                    <label className="flex min-h-11 min-w-11 cursor-pointer items-center gap-2">
+                    <label className="flex min-h-11 min-w-11 cursor-pointer flex-wrap items-center gap-2">
                       <input
                         type="checkbox"
                         checked={isExcluded}
@@ -90,7 +94,9 @@ const RecipientsTable = ({ recipients, editable, excluded, onToggle }: {
                   {!editable && !isExcluded && (
                     <>
                       <span className={status.className}>{status.label}</span>
-                      {recipient.error && <p className="mt-1 break-words text-xs text-ink-muted">{recipient.error}</p>}
+                      {recipient.status === 'failed' && recipient.error && (
+                        <p className="mt-1 text-xs text-ink-muted">{recipient.error}</p>
+                      )}
                     </>
                   )}
                 </td>

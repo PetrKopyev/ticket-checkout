@@ -5,4 +5,6 @@ import { apiPlugin } from './server/vitePlugin.ts'
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), apiPlugin()],
+  server: { cors: false },
+  preview: { cors: false },
 })

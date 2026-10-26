@@ -17,10 +17,10 @@ const subscribeHash = (callback: () => void) => {
 
 const getHash = () => window.location.hash
 
-const navLinkClass = 'rounded-control flex min-h-11 items-center px-3 py-2 text-center font-semibold text-ink-muted hover:text-ink aria-[current=page]:bg-surface-muted aria-[current=page]:text-ink'
+const navLinkClass = 'rounded-control flex min-h-11 min-w-0 break-words items-center px-3 py-2 text-center font-semibold text-ink-muted hover:text-ink aria-[current=page]:bg-surface-muted aria-[current=page]:text-ink'
 
 const Nav = ({ isOrganizer }: { isOrganizer: boolean }) => (
-  <nav aria-label="Разделы" className="mb-4 flex gap-2 print:hidden">
+  <nav aria-label="Разделы" className="mb-4 flex flex-wrap gap-2 print:hidden">
     <a href="#/" aria-current={isOrganizer ? undefined : 'page'} className={navLinkClass}>Билеты</a>
     <a href="#/organizer" aria-current={isOrganizer ? 'page' : undefined} className={navLinkClass}>
       Организатор

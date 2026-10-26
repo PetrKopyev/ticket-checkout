@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { getOutbox } from './client'
 import type { CampaignSummary, OutboxItem } from './client'
 import { plural } from '../format'
-import { cardClass, secondaryButtonClass } from '../components/ui'
+import { alertClass, cardClass, secondaryButtonClass } from '../components/ui'
 
 const formatSentAt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -14,9 +14,16 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
   onReload: () => void
 }) => {
   const [items, setItems] = useState<OutboxItem[]>([])
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    getOutbox().then(setItems)
+    getOutbox().then(
+      (outbox) => {
+        setError('')
+        setItems(outbox)
+      },
+      (reason: Error) => setError(reason.message),
+    )
   }, [reloadKey])
 
   const groups = campaigns
@@ -30,7 +37,8 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
         <button type="button" onClick={onReload} className={secondaryButtonClass}>Обновить</button>
       </div>
       <p className="mt-1 text-sm text-ink-muted">Демо-почтовый ящик: что ушло покупателям</p>
-      {groups.length === 0 && <p className="mt-4 text-ink-muted">Писем пока нет</p>}
+      {error && <p role="alert" className={`${alertClass} mt-4`}>Не удалось загрузить письма: {error}</p>}
+      {!error && groups.length === 0 && <p className="mt-4 text-ink-muted">Писем пока нет</p>}
       {groups.map(({ campaign, letters }) => (
         <section key={campaign.id} aria-labelledby={`outbox-${campaign.id}`} className="mt-4 border-t border-line pt-4">
           <h3 id={`outbox-${campaign.id}`} className="break-words text-base">

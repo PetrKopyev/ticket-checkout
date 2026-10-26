@@ -1,28 +1,39 @@
 import { useEffect, useState } from 'react'
 import { getDemo, resetDemo, setMailerDown } from './client'
-import { secondaryButtonClass } from '../components/ui'
+import { alertClass, secondaryButtonClass } from '../components/ui'
 
 const DemoPanel = ({ onReset }: { onReset: () => void }) => {
   const [mailerDown, setDown] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    getDemo().then((demo) => setDown(demo.mailerDown))
+    getDemo().then((demo) => setDown(demo.mailerDown), (reason: Error) => setError(reason.message))
   }, [])
 
   const toggle = async (down: boolean) => {
-    const demo = await setMailerDown(down)
-    setDown(demo.mailerDown)
+    setError('')
+    try {
+      const demo = await setMailerDown(down)
+      setDown(demo.mailerDown)
+    } catch (reason) {
+      setError(`Не удалось переключить службу: ${(reason as Error).message}`)
+    }
   }
 
   const reset = async () => {
-    await resetDemo()
-    onReset()
+    setError('')
+    try {
+      await resetDemo()
+      onReset()
+    } catch (reason) {
+      setError(`Не удалось сбросить данные: ${(reason as Error).message}`)
+    }
   }
 
   return (
     <details className="group mt-6 rounded-3xl border border-dashed border-line-strong bg-bg-soft p-5">
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-control focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-bright [&::-webkit-details-marker]:hidden">
-        <span>
+        <span className="min-w-0">
           <span className="block font-semibold">Демо-настройки</span>
           <span className="block text-sm text-ink-muted">Только для демонстрации</span>
         </span>
@@ -58,6 +69,7 @@ const DemoPanel = ({ onReset }: { onReset: () => void }) => {
       <button type="button" onClick={reset} className={`${secondaryButtonClass} mt-4`}>
         Сбросить данные
       </button>
+      {error && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
     </details>
   )
 }

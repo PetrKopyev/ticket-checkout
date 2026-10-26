@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { DatabaseSync } from 'node:sqlite'
 import {
   CampaignStateError,
+  InvalidLetterError,
   confirmCampaign,
   getCampaign,
   listCampaigns,
@@ -26,8 +27,27 @@ class HttpError extends Error {
 
 const MAX_BODY_BYTES = 64 * 1024
 const MAX_TEXT = 2000
-const MAX_SUBJECT = 200
-const MAX_LETTER_BODY = 5000
+
+export const isLocalHost = (host: string | undefined, port: number) =>
+  host === `127.0.0.1:${port}` || host === `localhost:${port}`
+
+export const parsePath = (url = '/') => {
+  try {
+    return new URL(url, 'http://localhost').pathname
+  } catch {
+    return null
+  }
+}
+
+const isSameOrigin = (req: IncomingMessage) => {
+  const { origin, host } = req.headers
+  if (origin === undefined) return true
+  try {
+    return new URL(origin).host === host
+  } catch {
+    return false
+  }
+}
 
 const readRaw = (req: IncomingMessage) => new Promise<string>((resolve, reject) => {
   const chunks: Buffer[] = []
@@ -55,13 +75,12 @@ const readBody = async (req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 const send = (res: ServerResponse, status: number, data: unknown) => {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' })
   res.end(JSON.stringify(data))
 }
 
-const optionalString = (value: unknown, field: string, max: number) => {
+const optionalString = (value: unknown, field: string) => {
   if (value !== undefined && typeof value !== 'string') throw new HttpError(400, `${field} должно быть строкой`)
-  if (value !== undefined && value.length > max) throw new HttpError(400, `${field} длиннее ${max} символов`)
   return value
 }
 
@@ -73,8 +92,8 @@ const parsePatch = (body: Record<string, unknown>) => {
     throw new HttpError(400, 'excluded должно быть списком email')
   }
   return {
-    subject: optionalString(body.subject, 'subject', MAX_SUBJECT),
-    body: optionalString(body.body, 'body', MAX_LETTER_BODY),
+    subject: optionalString(body.subject, 'subject'),
+    body: optionalString(body.body, 'body'),
     excluded: excluded as string[] | undefined,
   }
 }
@@ -94,9 +113,9 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
 
   const route = async (req: IncomingMessage, path: string) => {
     const method = req.method
-    if ((method === 'POST' || method === 'PATCH') && !isJson(req)) {
-      throw new HttpError(415, 'Нужен Content-Type: application/json')
-    }
+    const writes = method === 'POST' || method === 'PATCH'
+    if (writes && !isSameOrigin(req)) throw new HttpError(403, 'Запрос с чужого сайта')
+    if (writes && !isJson(req)) throw new HttpError(415, 'Нужен Content-Type: application/json')
     if (method === 'GET' && path === '/api/events') {
       return (db.prepare('SELECT id, title, starts_at, place FROM events ORDER BY starts_at').all() as EventRow[])
         .map((row) => ({ id: row.id, title: row.title, startsAt: row.starts_at, place: row.place }))
@@ -151,13 +170,15 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
   }
 
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    const path = new URL(req.url ?? '/', 'http://localhost').pathname
+    const path = parsePath(req.url)
+    if (path === null) return send(res, 400, { error: 'Неверный адрес' })
     if (!path.startsWith('/api/')) return next()
     route(req, path)
       .then((data) => send(res, 200, data))
       .catch((error) => {
         if (error instanceof HttpError && error.status === 413) res.setHeader('Connection', 'close')
         if (error instanceof HttpError) return send(res, error.status, { error: error.message })
+        if (error instanceof InvalidLetterError) return send(res, 400, { error: error.message })
         if (error instanceof CampaignStateError) return send(res, 409, { error: error.message })
         console.error(error)
         send(res, 500, { error: 'Внутренняя ошибка сервера' })

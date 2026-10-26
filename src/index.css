@@ -64,6 +64,7 @@
   }
 
   h1, h2, h3 {
+    overflow-wrap: break-word;
     font-weight: 800;
     letter-spacing: -0.02em;
   }

@@ -5,33 +5,46 @@ import ChatPanel from './ChatPanel'
 import CampaignPanel from './CampaignPanel'
 import OutboxList from './OutboxList'
 import DemoPanel from './DemoPanel'
-import { cardClass, secondaryButtonClass } from '../components/ui'
-
-const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'sending' || campaign.status === 'partial'
+import { isUnfinished } from './status'
+import { alertClass, cardClass, secondaryButtonClass } from '../components/ui'
 
 const Organizer = () => {
   const [campaignId, setCampaignId] = useState<number | null>(null)
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
-  const [unfinishedId, setUnfinishedId] = useState<number | null>(null)
+  const [error, setError] = useState('')
   const [resetKey, setResetKey] = useState(0)
   const [outboxKey, setOutboxKey] = useState(0)
   const campaignArea = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    listCampaigns().then((list) => {
-      setCampaigns(list)
-      setCampaignId(list[0]?.id ?? null)
-      setUnfinishedId(list.find(isUnfinished)?.id ?? null)
-    })
+    history.scrollRestoration = 'manual'
+    window.scrollTo({ top: 0 })
+  }, [])
+
+  useEffect(() => {
+    listCampaigns().then(
+      (list) => {
+        setCampaigns(list)
+        setCampaignId(list[0]?.id ?? null)
+      },
+      (reason: Error) => setError(reason.message),
+    )
   }, [resetKey])
 
   const reloadOutbox = useCallback(() => {
     setOutboxKey((previous) => previous + 1)
-    listCampaigns().then(setCampaigns)
+    listCampaigns().then(
+      (list) => {
+        setError('')
+        setCampaigns(list)
+      },
+      (reason: Error) => setError(reason.message),
+    )
   }, [])
 
   const reset = () => {
     setCampaignId(null)
+    setError('')
     setResetKey((previous) => previous + 1)
     setOutboxKey((previous) => previous + 1)
   }
@@ -41,7 +54,7 @@ const Organizer = () => {
     campaignArea.current?.focus()
   }
 
-  const unfinished = campaigns.find((campaign) => campaign.id === unfinishedId && isUnfinished(campaign))
+  const unfinished = campaigns.find((campaign) => campaign.id !== campaignId && isUnfinished(campaign))
 
   return (
     <>
@@ -55,6 +68,7 @@ const Organizer = () => {
           Опишите помощнику, что изменилось, — он подготовит письмо. Отправка только после вашего подтверждения.
         </p>
       </header>
+      {error && <p role="alert" className={`${alertClass} mb-6`}>Не удалось загрузить рассылки: {error}</p>}
       {unfinished && (
         <div
           role="status"
@@ -75,7 +89,7 @@ const Organizer = () => {
         <ChatPanel key={resetKey} onCampaign={setCampaignId} onOpenCampaign={openCampaign} />
         <div className="grid min-w-0 gap-6">
           <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">
-            <CampaignPanel key={campaignId} campaignId={campaignId} onSent={reloadOutbox} />
+            <CampaignPanel key={campaignId} campaignId={campaignId} onProgress={reloadOutbox} />
           </div>
           <OutboxList campaigns={campaigns} reloadKey={outboxKey} onReload={reloadOutbox} />
         </div>

@@ -6,8 +6,8 @@ import { selectRecipients } from '../recipients.ts'
 import { seed } from '../seed.ts'
 import { getHistory, sendAssistantMessage } from './assistant.ts'
 import { createFakeLlm } from './fake.ts'
-import { TOOLS, maskEmail, runTool } from './tools.ts'
-import type { LlmClient } from './types.ts'
+import { TOOLS, runTool } from './tools.ts'
+import type { ChatMessage, LlmClient } from './types.ts'
 
 let db: DatabaseSync
 
@@ -59,6 +59,36 @@ describe('assistant', () => {
     expect(getCampaign(db, campaignId as number)?.total).toBe(6)
   })
 
+  it('создаёт не больше одного черновика за ход', async () => {
+    const args = JSON.stringify({ event_id: 'ceramics', subject: 'Тема', body: 'Текст' })
+    let step = 0
+    const greedy: LlmClient = {
+      chat: async () => step++ === 0
+        ? { content: null, toolCalls: [1, 2].map((n) => ({ id: `call_${n}`, name: 'create_draft_campaign', arguments: args })) }
+        : { content: 'Готово', toolCalls: [] },
+    }
+    const { campaignId } = await sendAssistantMessage(db, greedy, 'Сделай два черновика')
+    expect(db.prepare('SELECT id FROM campaigns').all()).toEqual([{ id: campaignId }])
+    const tools = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool' ORDER BY id").all() as { content: string }[]
+    expect(JSON.parse(tools[1].content)).toEqual({ error: 'Черновик в этом ответе уже создан' })
+  })
+
+  it('отдаёт в LLM последние 20 сообщений без оторванных ответов инструментов', async () => {
+    const insert = db.prepare("INSERT INTO chat_messages (role, content, tool_calls, tool_call_id, created_at) VALUES (?, ?, ?, ?, '')")
+    for (let n = 0; n < 9; n++) {
+      insert.run('user', `Вопрос ${n}`, null, null)
+      insert.run('assistant', '', JSON.stringify([{ id: `call_${n}`, name: 'list_events', arguments: '{}' }]), null)
+      insert.run('tool', '[]', null, `call_${n}`)
+    }
+    let seen: ChatMessage[] = []
+    await sendAssistantMessage(db, { chat: async (messages) => { seen = [...messages]; return { content: 'Ок', toolCalls: [] } } }, 'Привет')
+    expect(seen[0].role).toBe('system')
+    expect(seen[1]).toEqual({ role: 'user', content: 'Вопрос 3' })
+    expect(seen).toHaveLength(20)
+    expect(seen.at(-1)).toEqual({ role: 'user', content: 'Привет' })
+    expect(db.prepare('SELECT COUNT(*) AS n FROM chat_messages').get()).toEqual({ n: 29 })
+  })
+
   it('останавливается после шести шагов', async () => {
     let calls = 0
     const looping: LlmClient = {
@@ -88,14 +118,15 @@ describe('tools', () => {
     expect(runTool(db, 'get_event', '{"event_id":"nope"}')).toHaveProperty('error')
     expect(runTool(db, 'list_recipients', '{}')).toHaveProperty('error')
     expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"","body":"x"}')).toHaveProperty('error')
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'а'.repeat(201), body: 'x' })))
+      .toEqual({ error: 'subject длиннее 200 символов' })
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'x', body: 'а'.repeat(5001) })))
+      .toEqual({ error: 'body длиннее 5000 символов' })
+    expect(db.prepare('SELECT COUNT(*) AS n FROM campaigns').get()).toEqual({ n: 0 })
     expect(runTool(db, 'send_campaign', '{}')).toHaveProperty('error')
   })
 
   it('считают получателей по уникальным email и не раскрывают адреса', () => {
-    expect(runTool(db, 'list_recipients', '{"event_id":"ceramics"}')).toEqual({
-      count: 6,
-      maskedEmails: selectRecipients(db, 'ceramics').map((recipient) => maskEmail(recipient.email)),
-    })
-    expect(maskEmail('anna@example.com')).toBe('a***@example.com')
+    expect(runTool(db, 'list_recipients', '{"event_id":"ceramics"}')).toEqual({ count: 6 })
   })
 })

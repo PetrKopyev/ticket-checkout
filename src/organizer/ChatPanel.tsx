@@ -60,7 +60,13 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
   return (
     <section aria-labelledby="chat-heading" className={`${cardClass} flex flex-col gap-4`}>
       <h2 id="chat-heading" className="text-xl">Помощник</h2>
-      <div ref={list} className="flex max-h-[28rem] min-h-40 flex-col gap-3 overflow-y-auto">
+      <div
+        ref={list}
+        role="log"
+        aria-live="polite"
+        aria-label="Переписка с помощником"
+        className="flex max-h-[28rem] min-h-40 flex-col gap-3 overflow-y-auto"
+      >
         {messages.length === 0 && (
           <div className="text-sm text-ink-muted">
             <p>Например: {EXAMPLE}</p>

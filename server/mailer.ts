@@ -21,8 +21,11 @@ export const setMailerDown = (db: DatabaseSync, down: boolean): void => {
   ).run(down ? '1' : '0')
 }
 
-export const createDbMailer = (db: DatabaseSync): Mailer => ({
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export const createDbMailer = (db: DatabaseSync, { delayMs = 0 } = {}): Mailer => ({
   send: async (mail) => {
+    if (delayMs) await sleep(delayMs)
     if (isMailerDown(db)) throw new MailerDownError('Почтовая служба недоступна')
     db.prepare(`
       INSERT INTO outbox (campaign_id, email, subject, body, sent_at) VALUES (?, ?, ?, ?, ?)

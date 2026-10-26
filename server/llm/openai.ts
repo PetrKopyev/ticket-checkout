@@ -32,6 +32,7 @@ export const createOpenAiLlm = ({ baseUrl, model, apiKey }: OpenAiConfig): LlmCl
         messages: messages.map(toOpenAi),
         tools: tools.map((tool) => ({ type: 'function', function: tool })),
       }),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) throw new Error(`LLM ответил ${response.status}`)
     const { message } = ((await response.json()) as OpenAiResponse).choices[0]

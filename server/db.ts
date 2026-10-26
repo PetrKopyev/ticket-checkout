@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
+// Схема без миграций: после её правки удалить data/ (CREATE IF NOT EXISTS не меняет готовые таблицы).
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
@@ -71,7 +72,7 @@ export const transaction = <T>(db: DatabaseSync, fn: () => T): T => {
   }
 }
 
-export const openDb =(path: string): DatabaseSync => {
+export const openDb = (path: string): DatabaseSync => {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')

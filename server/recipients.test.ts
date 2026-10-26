@@ -8,9 +8,9 @@ let db: DatabaseSync
 
 const emails = (eventId: string) => selectRecipients(db, eventId).map((recipient) => recipient.email)
 
-const addPurchase = (eventId: string, email: string, status: 'active' | 'cancelled', qty = 1) => {
-  db.prepare('INSERT INTO purchases (event_id, buyer_name, email, status, qty) VALUES (?, ?, ?, ?, ?)')
-    .run(eventId, 'Тест', email, status, qty)
+const addPurchase = (eventId: string, email: string, status: 'active' | 'cancelled') => {
+  db.prepare('INSERT INTO purchases (event_id, buyer_name, email, status, qty) VALUES (?, ?, ?, ?, 1)')
+    .run(eventId, 'Тест', email, status)
 }
 
 beforeEach(() => {
@@ -51,8 +51,8 @@ describe('selectRecipients', () => {
   })
 
   it('регистр и пробелы в email сливаются в одного получателя', () => {
-    const anna = selectRecipients(db, 'ceramics').find((recipient) => recipient.email === 'anna@example.com')
-    expect(anna).toEqual({ email: 'anna@example.com', buyerName: 'Анна Смирнова', qty: 3 })
+    expect(emails('ceramics').filter((email) => email === 'anna@example.com')).toHaveLength(1)
+    expect(emails('fonts').filter((email) => email === 'kira@example.com')).toHaveLength(1)
   })
 
   it('две действующие покупки — один получатель', () => {

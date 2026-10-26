@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { confirmCampaign, getCampaign, resumeCampaign, updateCampaign } from './client'
-import type { Campaign, CampaignStatus } from './client'
+import type { Campaign } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
 import RecipientsTable from './RecipientsTable'
+import { partialReasons, partialTitle, statusLabel, summarize } from './status'
 import { validate } from './validate'
 import { plural } from '../format'
 import {
@@ -16,20 +17,13 @@ import {
   secondaryButtonClass,
 } from '../components/ui'
 
-const statusLabels: Record<CampaignStatus, string> = {
-  draft: 'Черновик',
-  sending: 'Отправляется',
-  completed: 'Отправлена',
-  partial: 'Отправлена частично',
-}
-
 const excludedOf = (campaign: Campaign) =>
   campaign.recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email)
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
 
-const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSent: () => void }) => {
+const CampaignPanel = ({ campaignId, onProgress }: { campaignId: number | null; onProgress: () => void }) => {
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -39,6 +33,9 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [pollAttempt, setPollAttempt] = useState(0)
+  const [isSent, setIsSent] = useState(false)
+  const sendButton = useRef<HTMLButtonElement>(null)
+  const progress = useRef<HTMLDivElement>(null)
 
   const apply = (next: Campaign) => {
     setCampaign(next)
@@ -70,9 +67,14 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
   }, [campaign, pollAttempt])
 
   const sent = campaign?.sent
+  const status = campaign?.status
   useEffect(() => {
-    if (sent !== undefined) onSent()
-  }, [sent, onSent])
+    if (status) onProgress()
+  }, [sent, status, onProgress])
+
+  useEffect(() => {
+    if (isSent) progress.current?.focus()
+  }, [isSent])
 
   if (!campaign) {
     return (
@@ -98,23 +100,29 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
     setError('')
     try {
       apply(await action())
+      return true
     } catch (reason) {
       setError((reason as Error).message)
+      return false
     } finally {
       setIsBusy(false)
     }
   }
 
   const save = async () => {
-    await run(() => updateCampaign(campaign.id, { subject, body, excluded }))
-    setSaved(true)
+    if (await run(() => updateCampaign(campaign.id, { subject, body, excluded }))) setSaved(true)
   }
 
   const send = () => run(async () => {
     if (isDirty) await updateCampaign(campaign.id, { subject, body, excluded })
-    setIsConfirming(false)
     return confirmCampaign(campaign.id)
   })
+
+  const closeDialog = (isDone: boolean) => {
+    setIsConfirming(false)
+    if (isDone) setIsSent(true)
+    else sendButton.current?.focus()
+  }
 
   const toggle = (email: string) => {
     setSaved(false)
@@ -130,8 +138,8 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
           <p className="text-sm font-medium text-violet-soft">Рассылка</p>
           <h2 id="campaign-heading" className="mt-1 break-words text-xl">{campaign.eventTitle}</h2>
         </div>
-        <p className={campaign.status === 'partial' ? dangerChipClass : chipClass}>
-          {statusLabels[campaign.status]}
+        <p className={`${campaign.status === 'partial' ? dangerChipClass : chipClass} break-words`}>
+          {statusLabel(campaign.status, campaign.sent)}
         </p>
       </div>
       <p className="mt-1 text-sm text-ink-muted">
@@ -171,7 +179,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
       )}
 
       {!isDraft && (
-        <div className="mt-4">
+        <div ref={progress} tabIndex={-1} className="mt-4 outline-none">
           <p aria-live="polite" className="font-semibold tabular-nums">
             Отправлено {campaign.sent} из {campaign.total}
           </p>
@@ -187,10 +195,10 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
 
       {campaign.status === 'partial' && (
         <div role="alert" className={`${alertClass} mt-4`}>
-          <p>
-            Отправлено {campaign.sent} из {campaign.total}. Часть писем не ушла:
-            служба отправки недоступна или адрес отклонён.
-          </p>
+          <p>{partialTitle(campaign.sent)}: отправлено {campaign.sent} из {campaign.total}.</p>
+          {partialReasons(summarize(campaign.recipients, excluded)).map((reason) => (
+            <p key={reason} className="mt-1 text-sm font-normal text-ink-soft">{reason}</p>
+          ))}
           <button
             type="button"
             disabled={isBusy}
@@ -208,6 +216,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
       {error && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
 
       <RecipientsTable
+        key={campaign.id}
         recipients={campaign.recipients}
         editable={isDraft}
         excluded={excluded}
@@ -220,6 +229,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
             Сохранить
           </button>
           <button
+            ref={sendButton}
             type="button"
             disabled={isBusy || errors.length > 0}
             aria-describedby="send-hint"
@@ -233,7 +243,7 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
         </div>
       )}
 
-      {isDraft && isConfirming && (
+      {isConfirming && (
         <ConfirmDialog
           eventTitle={campaign.eventTitle}
           date={formatDate(campaign.startsAt)}
@@ -242,8 +252,9 @@ const CampaignPanel = ({ campaignId, onSent }: { campaignId: number | null; onSe
           recipientsCount={recipientsCount}
           excludedCount={excluded.length}
           isBusy={isBusy}
+          error={error}
           onConfirm={send}
-          onCancel={() => setIsConfirming(false)}
+          onClose={closeDialog}
         />
       )}
     </section>
