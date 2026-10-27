@@ -2,7 +2,7 @@ import type { ChatMessage, LlmClient, LlmReply } from './types.ts'
 
 type EventInfo = { id: string; title: string; startsAt: string; place: string }
 
-const DATE_RE = /на\s+(\d+\s+[а-яё]+),?\s+(\d+:\d+)/i
+const DATE_RE = /на\s+(\d+\s+[а-яё]+),?\s+(?:в\s+)?(\d+:\d+)/i
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 const DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
@@ -27,6 +27,13 @@ const mentions = (text: string, event: EventInfo) => {
   const lower = text.toLowerCase()
   return quotedTitles(event.title).some((title) => title.toLowerCase().split(/\s+/)
     .every((word) => lower.includes(word.length > 1 ? word.slice(0, -1) : word)))
+}
+
+const LIST_RE = /афиш|список\s+мероприят|какие[^.?!]*мероприят/i
+
+const describe = (event: EventInfo) => {
+  const [, month, day, time] = event.startsAt.match(/-(\d{2})-(\d{2})T(\d{2}:\d{2})/) as RegExpMatchArray
+  return `${event.title}, ${Number(day)} ${MONTHS[Number(month) - 1]} в ${time}, ${event.place}`
 }
 
 const letter = (event: EventInfo, text: string) => {
@@ -59,13 +66,15 @@ export const createFakeLlm = (): LlmClient => ({
     }
     const events = result('list_events') as EventInfo[] | undefined
     if (!events) return call('list_events', {})
+    if (LIST_RE.test(text)) return say(`Мероприятия: ${events.map(describe).join('; ')}.`)
     const unknown = quotedTitles(text).find((title) => !events.some((item) => mentions(title, item)))
     if (unknown) {
       return say(`Не нашёл такого мероприятия: «${unknown}». Доступны: ${events.map((item) => item.title).join(', ')}.`)
     }
     const event = events.find((item) => mentions(text, item))
     if (!event) {
-      return say(`Не понял, о каком мероприятии речь. Уточните, пожалуйста: ${events.map((item) => item.title).join(', ')}.`)
+      return say('Я готовлю уведомления покупателям о переносе мероприятия. Назовите мероприятие и новую дату, '
+        + `например: Переносим мастер-класс “Керамика” на 20 ноября, 19:00. Доступны: ${events.map((item) => item.title).join(', ')}.`)
     }
     const date = text.match(DATE_RE)
     if (date && !validDate(date)) {

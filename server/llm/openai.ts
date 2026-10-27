@@ -29,6 +29,7 @@ export const createOpenAiLlm = ({ baseUrl, model, apiKey }: OpenAiConfig): LlmCl
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,
+        temperature: 0,
         messages: messages.map(toOpenAi),
         tools: tools.map((tool) => ({ type: 'function', function: tool })),
       }),

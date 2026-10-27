@@ -43,7 +43,17 @@ describe('assistant', () => {
   it('просит уточнить мероприятие, если не понял какое', async () => {
     const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Напиши всем, что всё переносится')
     expect(campaignId).toBeNull()
-    expect(reply).toContain('Уточните')
+    expect(reply).toContain('Назовите мероприятие')
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+  })
+
+  it('на вопрос о списке мероприятий перечисляет их без черновика', async () => {
+    for (const phrase of ['Какие ещё мероприятия есть?', 'какие мероприятия', 'что в афише', 'список мероприятий']) {
+      const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), phrase)
+      expect(campaignId).toBeNull()
+      expect(reply).toContain('Мастер-класс "Керамика", 13 ноября в 19:00, Москва')
+      expect(reply).toContain('Лекция "История шрифта", 20 ноября в 19:00, Москва')
+    }
     expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
   })
 
@@ -65,7 +75,7 @@ describe('assistant', () => {
 
   it('не находит мероприятие по общему слову и отказывает на неизвестное в любых кавычках', async () => {
     const vague = await sendAssistantMessage(db, createFakeLlm(), 'Переносим мастер-класс на 20 ноября, 19:00')
-    expect(vague.reply).toContain('Уточните')
+    expect(vague.reply).toContain('Назовите мероприятие')
     for (const phrase of ['Переносим мастер-класс “Мяу” на 20 ноября, 19:00', 'Переносим мастер-класс "Мяу" на 20 ноября, 19:00']) {
       const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), phrase)
       expect(campaignId).toBeNull()
@@ -95,7 +105,7 @@ describe('assistant', () => {
   it.each(['мастер-класс', 'лекцию'])('не выбирает мероприятие по общим словам: %s', async (title) => {
     const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), `Перенеси ${title}`)
     expect(campaignId).toBeNull()
-    expect(reply).toContain('Не понял, о каком мероприятии')
+    expect(reply).toContain('Назовите мероприятие')
     expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
   })
 
@@ -139,7 +149,7 @@ describe('assistant', () => {
   })
 
   it('создаёт не больше одного черновика за ход', async () => {
-    const args = JSON.stringify({ event_id: 'ceramics', subject: 'Тема', body: 'Текст' })
+    const args = JSON.stringify({ event_id: 'ceramics', subject: 'Тема', body: 'Керамика' })
     let step = 0
     const greedy: LlmClient = {
       chat: async () => step++ === 0
@@ -212,13 +222,13 @@ describe('tools', () => {
     expect(runTool(db, 'get_event', 'не json')).toHaveProperty('error')
     expect(runTool(db, 'get_event', '{"event_id":"nope"}')).toHaveProperty('error')
     expect(runTool(db, 'list_recipients', '{}')).toHaveProperty('error')
-    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"","body":"x"}'))
+    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"","body":"История шрифта"}'))
       .toEqual({ error: 'Тема не может быть пустой' })
     expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"x"}'))
       .toEqual({ error: 'Тема и текст письма должны быть строками' })
-    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'а'.repeat(201), body: 'x' })))
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'а'.repeat(201), body: 'История шрифта' })))
       .toEqual({ error: 'Тема длиннее 200 символов' })
-    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'x', body: 'а'.repeat(5001) })))
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: 'а'.repeat(5001) })))
       .toEqual({ error: 'Текст длиннее 5000 символов' })
     expect(db.prepare('SELECT COUNT(*) AS n FROM campaigns').get()).toEqual({ n: 0 })
     expect(runTool(db, 'send_campaign', '{}')).toHaveProperty('error')

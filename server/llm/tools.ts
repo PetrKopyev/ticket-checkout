@@ -53,7 +53,7 @@ const parseArgs = (json: string): Record<string, unknown> | null => {
   }
 }
 
-export const runTool = (db: DatabaseSync, name: string, argsJson: string): object => {
+export const runTool = (db: DatabaseSync, name: string, argsJson: string, request?: string): object => {
   const args = parseArgs(argsJson)
   if (!args) return { error: 'Аргументы должны быть JSON-объектом' }
   if (name === 'list_events') {
@@ -69,6 +69,15 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string): objec
   if (name === 'list_recipients') return { count: selectRecipients(db, event.id).length }
   const { subject, body } = args
   if (typeof subject !== 'string' || typeof body !== 'string') return { error: 'Тема и текст письма должны быть строками' }
+  const letter = `${subject}\n${body}`.toLowerCase()
+  const title = event.title.match(/["“”„«»'‘’]([^"“”„«»'‘’]+)["“”„«»'‘’]/)?.[1] ?? event.title
+  const date = request?.match(/на\s+(\d{1,2}\s+[а-яё]+),?\s+(?:в\s+)?(\d{1,2}:\d{2})/i)
+  const missing = []
+  if (!letter.includes(title.toLowerCase())) missing.push(`название «${title}»`)
+  if (date && (!letter.includes(date[1].toLowerCase()) || !letter.includes(date[2]))) {
+    missing.push(`дату «${date[1]}, ${date[2]}»`)
+  }
+  if (missing.length) return { error: `В письме должны быть название мероприятия и новая дата: добавьте ${missing.join(' и ')}` }
   try {
     const campaign = createDraft(db, { eventId: event.id, subject, body })
     return { campaign_id: campaign.id, recipients_count: campaign.total }
