@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useBackdropClose } from './dialog'
 import { plural } from '../format'
 import { alertClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
@@ -19,6 +20,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
+  const backdrop = useBackdropClose(dialog, isBusy)
 
   useEffect(() => {
     dialog.current?.showModal()
@@ -36,6 +38,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
   return (
     <dialog
       ref={dialog}
+      {...backdrop}
       role="alertdialog"
       aria-labelledby="confirm-heading"
       aria-describedby="confirm-summary"

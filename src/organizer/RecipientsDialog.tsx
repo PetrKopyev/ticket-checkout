@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getRecipients, includeAll, includeRecipient, updateCampaign } from './client'
 import type { Campaign, RecipientsPage, RecipientsTab } from './client'
 import ConfirmDialog from './ConfirmDialog'
+import { useBackdropClose } from './dialog'
 import { eventDateLabel } from './status'
 import {
   applyExclusion,
@@ -56,6 +57,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }:
   const [actionError, setActionError] = useState('')
   const [isBusy, setIsBusy] = useState(false)
   const [confirmation, setConfirmation] = useState<{ email?: string; count: number } | null>(null)
+  const backdrop = useBackdropClose(dialog, isBusy)
 
   useEffect(() => {
     const opener = document.activeElement
@@ -184,6 +186,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }:
   return (
     <dialog
       ref={dialog}
+      {...backdrop}
       aria-labelledby="recipients-heading"
       onCancel={(event) => event.target === event.currentTarget && isBusy && event.preventDefault()}
       onClose={(event) => { if (event.target === event.currentTarget && !event.currentTarget.open) onClose() }}

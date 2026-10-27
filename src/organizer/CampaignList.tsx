@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CampaignSummary } from './client'
+import { useBackdropClose } from './dialog'
 import { statusLabel } from './status'
 import { chipClass, dangerChipClass, secondaryButtonClass } from '../components/ui'
 
@@ -10,6 +11,7 @@ const CampaignsDialog = ({ campaigns, campaignId, onOpen, onClose }: {
   onClose: () => void
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
+  const backdrop = useBackdropClose(dialog)
 
   useEffect(() => {
     const opener = document.activeElement
@@ -24,6 +26,7 @@ const CampaignsDialog = ({ campaigns, campaignId, onOpen, onClose }: {
   return (
     <dialog
       ref={dialog}
+      {...backdrop}
       aria-labelledby="campaigns-heading"
       onClose={(event) => { if (event.target === event.currentTarget && !event.currentTarget.open) onClose() }}
       className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl overflow-hidden rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
