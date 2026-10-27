@@ -267,6 +267,14 @@ describe('api', () => {
     expect((await patch({ subject: 'а'.repeat(200), body: 'а'.repeat(5000) })).status).toBe(200)
   })
 
+  it.each(['\u007f', '\u0085', '\u2028', '\u202e', '\ufeff', '\t'])('PATCH с символом %j в теме возвращает 400', async (char) => {
+    const id = await createDraft()
+    const shown = await shownLetter(id)
+    expect(await request(`/api/campaigns/${id}`, 'PATCH', { subject: `Тема${char}письма` }))
+      .toEqual({ status: 400, data: { error: 'Тема должна быть одной строкой' } })
+    expect(await shownLetter(id)).toEqual(shown)
+  })
+
   it('PATCH принимает только JSON', async () => {
     const id = await createDraft()
     const patch = (type: string) =>

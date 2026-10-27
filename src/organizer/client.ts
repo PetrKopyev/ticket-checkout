@@ -15,7 +15,6 @@ export type Recipient = {
   email: string
   status: 'pending' | 'sent' | 'failed'
   error: string | null
-  attempts: number
   excluded: boolean
 }
 

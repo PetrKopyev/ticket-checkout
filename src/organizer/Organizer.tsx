@@ -85,7 +85,7 @@ const Organizer = () => {
           <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
           <span className="min-w-0">Уведомления покупателям</span>
         </p>
-        <h1 className="text-xl sm:text-3xl">Кабинет организатора</h1>
+        <h1 className="text-2xl sm:text-3xl">Кабинет организатора</h1>
         <p className="mt-3 text-ink-muted">
           Опишите помощнику, что изменилось, — он подготовит письмо. Отправка только после вашего подтверждения.
         </p>

@@ -22,7 +22,13 @@ describe('validate', () => {
       .toEqual(['Тема длиннее 5 символов', 'Текст длиннее 3 символов'])
   })
 
-  it('без лимитов проверяет только пустые поля и получателей', () => {
+  it.each(['\u007f', '\u0085', '\u2028', '\u202e', '\ufeff', '\t'])('символ %j запрещён в теме', (char) => {
+    const draft = { subject: `Тема${char}письма`, body: 'Текст', recipientsCount: 1 }
+    expect(validate(draft, limits)).toEqual(['Тема должна быть одной строкой'])
+    expect(validate(draft, null)).toEqual(['Тема должна быть одной строкой'])
+  })
+
+  it('без лимитов не проверяет длину темы и текста', () => {
     expect(validate({ subject: 'т'.repeat(201), body: 'т'.repeat(5001), recipientsCount: 0 }, null))
       .toEqual(['Нет ни одного получателя'])
   })

@@ -53,7 +53,7 @@ const activeSends = new Set<number>()
 const now = () => new Date().toISOString()
 
 const checkLetter = ({ subject, body }: { subject?: string; body?: string }) => {
-  if (subject !== undefined && [...subject].some((char) => char.charCodeAt(0) < 0x20)) {
+  if (subject !== undefined && /[\p{Cc}\p{Zl}\p{Zp}\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/u.test(subject)) {
     throw new InvalidLetterError('Тема должна быть одной строкой')
   }
   if (subject !== undefined && !subject.trim()) throw new InvalidLetterError('Тема не может быть пустой')
