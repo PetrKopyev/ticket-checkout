@@ -17,6 +17,23 @@ beforeEach(() => {
 })
 
 describe('assistant', () => {
+  it('не берёт дату из запроса до последнего созданного черновика', async () => {
+    const first = await sendAssistantMessage(db, createFakeLlm(), 'Переносим мастер-класс "Керамика" на 20 ноября, 19:00')
+    expect(first.campaignId).not.toBeNull()
+    let step = 0
+    const llm: LlmClient = {
+      chat: async () => step++ === 0
+        ? { content: null, toolCalls: [{
+          id: 'draft', name: 'create_draft_campaign',
+          arguments: JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: 'Лекция "История шрифта" переносится на 27 ноября' }),
+        }] }
+        : { content: 'Готово', toolCalls: [] },
+    }
+    await sendAssistantMessage(db, llm, 'Переносим «История шрифта» на 27 ноября')
+    const result = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool' ORDER BY id DESC LIMIT 1").get() as { content: string }
+    expect(JSON.parse(result.content)).toHaveProperty('campaign_id')
+  })
+
   it('проверяет дату из предыдущего запроса при подтверждении без даты', async () => {
     await sendAssistantMessage(db, {
       chat: async () => ({ content: 'Создать черновик?', toolCalls: [] }),

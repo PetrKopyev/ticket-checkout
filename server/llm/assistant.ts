@@ -71,7 +71,8 @@ export const getHistory = (db: DatabaseSync) =>
 export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, text: string) => {
   saveMessage(db, { role: 'user', content: text })
   const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...loadRecentMessages(db)]
-  const request = messages.findLast((message) => message.role === 'user' && parseMoveDate(message.content))?.content ?? ''
+  const lastDraft = messages.findLastIndex((message) => message.role === 'tool' && 'campaign_id' in JSON.parse(message.content))
+  const request = messages.slice(lastDraft + 1).findLast((message) => message.role === 'user' && parseMoveDate(message.content))?.content ?? ''
   let campaignId: number | null = null
   for (let step = 0; step < MAX_STEPS; step++) {
     const reply = await llm.chat(messages, TOOLS).catch((error) => {
