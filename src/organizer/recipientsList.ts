@@ -1,4 +1,4 @@
-import type { CampaignStatus, Recipient, RecipientsPage, RecipientsTab } from './client'
+import type { Campaign, CampaignStatus, Recipient, RecipientsPage, RecipientsTab } from './client'
 import { canInclude } from './status'
 
 export type RecipientsList = {
@@ -25,6 +25,32 @@ export const mergeRecipientsPage = (list: RecipientsList, page: RecipientsPage, 
     total: page.total,
     offset: page.items.length ? offset + page.items.length : page.total,
     counts: page.counts,
+  }
+}
+
+export const replaceRecipients = (list: RecipientsList, page: RecipientsPage, requestId: number, offset: number): RecipientsList =>
+  list.requestId !== requestId || list.offset !== offset
+    ? list
+    : { ...list, items: page.items, total: page.total, offset: page.items.length, counts: page.counts }
+
+export const campaignCounts = (campaign: Campaign): RecipientsPage['counts'] => ({
+  all: campaign.total + campaign.excluded,
+  sent: campaign.sent,
+  pending: campaign.pending,
+  failed: campaign.failed,
+  excluded: campaign.excluded,
+})
+
+export const applyExclusion = (list: RecipientsList, email: string, excluded: boolean, counts: RecipientsPage['counts']): RecipientsList => {
+  const leaves = list.tab === 'excluded' && !excluded
+  return {
+    ...list,
+    items: leaves
+      ? list.items.filter((item) => item.email !== email)
+      : list.items.map((item) => item.email === email ? { ...item, excluded } : item),
+    total: leaves ? list.total - 1 : list.total,
+    offset: leaves ? list.offset - 1 : list.offset,
+    counts,
   }
 }
 

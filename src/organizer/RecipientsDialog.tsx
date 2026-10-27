@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getRecipients, includeAll, includeRecipient, updateCampaign } from './client'
-import type { Campaign, RecipientsTab } from './client'
+import type { Campaign, RecipientsPage, RecipientsTab } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import { eventDateLabel } from './status'
 import {
+  applyExclusion,
+  campaignCounts,
   emptyRecipientsList,
   mergeRecipientsPage,
   recipientTabs,
+  replaceRecipients,
   showIncludeAll,
   showIncludeRecipient,
   toggleExcluded,
@@ -108,6 +111,28 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
     return () => observer.disconnect()
   }, [isLoading, loadError, list.offset, list.total, loadPage])
 
+  const reload = useCallback(async () => {
+    const current = latestList.current
+    if (!current.offset || loadingRequest.current === current.requestId) return
+    try {
+      let page: RecipientsPage | null = null
+      for (let offset = 0; offset < current.offset; offset += 100) {
+        const part = await getRecipients(campaign.id, { tab: current.tab, q: current.q, offset, limit: 100 })
+        page = page ? { ...part, items: [...page.items, ...part.items] } : part
+      }
+      if (!page) return
+      const next = replaceRecipients(latestList.current, page, current.requestId, current.offset)
+      latestList.current = next
+      setList(next)
+    } catch {
+      // следующее изменение рассылки повторит обновление
+    }
+  }, [campaign.id])
+
+  useEffect(() => {
+    void reload()
+  }, [campaign.status, campaign.sent, campaign.failed, reload])
+
   const apply = (next: Campaign) => {
     requestId.current += 1
     onCampaign(next)
@@ -120,7 +145,11 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
     setIsBusy(true)
     setActionError('')
     try {
-      apply(await updateCampaign(campaign.id, { excluded: toggleExcluded(campaign.excludedEmails, email) }))
+      const next = await updateCampaign(campaign.id, { excluded: toggleExcluded(campaign.excludedEmails, email) })
+      const updated = applyExclusion(latestList.current, email, next.excludedEmails.includes(email), campaignCounts(next))
+      latestList.current = updated
+      setList(updated)
+      onCampaign(next)
     } catch (reason) {
       setActionError((reason as Error).message)
     } finally {
@@ -148,13 +177,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
     }
   }
 
-  const counts = list.counts ?? {
-    all: campaign.total + campaign.excluded,
-    sent: campaign.sent,
-    pending: campaign.pending,
-    failed: campaign.failed,
-    excluded: campaign.excluded,
-  }
+  const counts = list.counts ?? campaignCounts(campaign)
   const isDraft = campaign.status === 'draft'
 
   return (
@@ -234,7 +257,6 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
                       <input
                         type="checkbox"
                         checked={recipient.excluded}
-                        disabled={isBusy}
                         onChange={() => toggle(recipient.email)}
                         aria-label={`Исключить ${recipient.email}`}
                         className="size-5 accent-violet"

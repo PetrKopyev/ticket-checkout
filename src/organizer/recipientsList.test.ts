@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CampaignStatus, Recipient, RecipientsPage } from './client'
-import { emptyRecipientsList, mergeRecipientsPage, recipientTabs, showIncludeAll, showIncludeRecipient, toggleExcluded } from './recipientsList'
+import { applyExclusion, emptyRecipientsList, replaceRecipients, mergeRecipientsPage, recipientTabs, showIncludeAll, showIncludeRecipient, toggleExcluded } from './recipientsList'
 
 const recipient = (email: string): Recipient => ({ email, status: 'pending', excluded: false, error: null })
 const page = (emails: string[], total = 3): RecipientsPage => ({
@@ -79,5 +79,32 @@ describe('вкладки и досылка', () => {
     expect(showIncludeAll(status, 'excluded', 2)).toBe(expected)
     expect(showIncludeAll(status, 'excluded', 0)).toBe(false)
     expect(showIncludeAll(status, 'all', 2)).toBe(false)
+  })
+})
+
+describe('обновление списка на месте', () => {
+  const counts = { all: 3, sent: 0, pending: 3, failed: 0, excluded: 1 }
+  const loaded = (tab: 'all' | 'excluded') => mergeRecipientsPage(emptyRecipientsList(tab, '', 1), page(['a', 'b', 'c']), 1, 0)
+
+  it('отмечает исключение в строке, остальное не трогает', () => {
+    const list = loaded('all')
+    const next = applyExclusion(list, 'b', true, counts)
+    expect(next.items.map((item) => item.excluded)).toEqual([false, true, false])
+    expect(next).toMatchObject({ total: 3, offset: 3, counts })
+  })
+
+  it('убирает строку на вкладке исключённых при возврате', () => {
+    const next = applyExclusion(loaded('excluded'), 'b', false, counts)
+    expect(next.items.map((item) => item.email)).toEqual(['a', 'c'])
+    expect(next).toMatchObject({ total: 2, offset: 2 })
+  })
+
+  it('подменяет загруженные строки и счётчики, отбрасывая устаревший ответ', () => {
+    const list = loaded('all')
+    const fresh = page(['a', 'b', 'c'])
+    fresh.items[0] = { ...recipient('a'), status: 'sent' }
+    expect(replaceRecipients(list, fresh, 1, 3).items[0].status).toBe('sent')
+    expect(replaceRecipients(list, fresh, 2, 3)).toBe(list)
+    expect(replaceRecipients(list, fresh, 1, 5)).toBe(list)
   })
 })
