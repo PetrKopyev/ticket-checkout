@@ -26,10 +26,10 @@ describe('имитация LLM', () => {
     )
   })
 
-  it('подписывает письмо без даты', async () => {
+  it('просит уточнить дату', async () => {
     const result = await reply('Напиши покупателям Керамики')
-    expect(JSON.parse(result.toolCalls[0].arguments).body)
-      .toBe('Здравствуйте!\n\nПишем вам по поводу мероприятия Мастер-класс "Керамика".\n\nКоманда Sqoch')
+    expect(result.toolCalls).toEqual([])
+    expect(result.content).toBe('Укажите новую дату и время переноса, например: «на 20 ноября, 19:00»')
   })
 
   it('готовит письмо с числовой датой и временем перед датой', async () => {

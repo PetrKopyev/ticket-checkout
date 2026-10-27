@@ -20,14 +20,7 @@ const formatEvent = (event: EventInfo) => {
   return `${event.title}, ${Number(day)} ${MONTHS[Number(month) - 1]} в ${time}, ${event.place}`
 }
 
-const letter = (event: EventInfo, text: string) => {
-  const date = parseMoveDate(text)
-  if (!date) {
-    return {
-      subject: `${event.title}: важная информация`,
-      body: `Здравствуйте!\n\nПишем вам по поводу мероприятия ${event.title}.\n\nКоманда Sqoch`,
-    }
-  }
+const letter = (event: EventInfo, date: NonNullable<ReturnType<typeof parseMoveDate>>) => {
   const when = `${date.day} ${date.month}, ${date.time}`
   return {
     subject: `${event.title} переносится на ${when}`,
@@ -62,13 +55,14 @@ export const createFakeLlm = (): LlmClient => ({
       return say('Я готовлю уведомления покупателям о переносе мероприятия. Назовите мероприятие и новую дату, '
         + `например: Переносим мастер-класс “Керамика” на 20 ноября, 19:00. Доступны: ${events.map((item) => item.title).join(', ')}.`)
     }
-    if (match && !date) {
+    if (!match) return say('Укажите новую дату и время переноса, например: «на 20 ноября, 19:00»')
+    if (!date) {
       return say(`Не понял дату переноса: «${match[0]}». Напишите, например: «на 20 ноября, 19:00»`)
     }
     const recipients = result('list_recipients') as { count: number } | undefined
     if (!recipients) return call('list_recipients', { event_id: event.id })
     const draft = result('create_draft_campaign') as { recipients_count: number; error?: string } | undefined
-    if (!draft) return call('create_draft_campaign', { event_id: event.id, ...letter(event, text) })
+    if (!draft) return call('create_draft_campaign', { event_id: event.id, ...letter(event, date) })
     if (draft.error) return say(`Не получилось создать черновик: ${draft.error}`)
     return say(`Черновик готов: ${draft.recipients_count} получателей. Проверьте письмо и подтвердите отправку.`)
   },

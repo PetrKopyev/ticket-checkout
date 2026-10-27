@@ -1,5 +1,4 @@
 import type { DatabaseSync } from 'node:sqlite'
-import { parseMoveDate } from './date.ts'
 import { TOOLS, runTool } from './tools.ts'
 import type { ChatMessage, LlmClient } from './types.ts'
 
@@ -55,9 +54,9 @@ const saveMessage = (db: DatabaseSync, message: ChatMessage) => {
     .run(message.role, message.content ?? '', toolCalls, message.role === 'tool' ? message.toolCallId : null, new Date().toISOString())
 }
 
-const runToolSafely = (db: DatabaseSync, name: string, args: string, request: string): object => {
+const runToolSafely = (db: DatabaseSync, name: string, args: string, requests: string[]): object => {
   try {
-    return runTool(db, name, args, request)
+    return runTool(db, name, args, requests)
   } catch (error) {
     console.error(error)
     return { error: 'Инструмент завершился с ошибкой' }
@@ -71,8 +70,7 @@ export const getHistory = (db: DatabaseSync) =>
 export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, text: string) => {
   saveMessage(db, { role: 'user', content: text })
   const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...loadRecentMessages(db)]
-  const lastDraft = messages.findLastIndex((message) => message.role === 'tool' && 'campaign_id' in JSON.parse(message.content))
-  const request = messages.slice(lastDraft + 1).findLast((message) => message.role === 'user' && parseMoveDate(message.content))?.content ?? ''
+  const requests = messages.filter((message) => message.role === 'user').map((message) => message.content as string)
   let campaignId: number | null = null
   for (let step = 0; step < MAX_STEPS; step++) {
     const reply = await llm.chat(messages, TOOLS).catch((error) => {
@@ -86,7 +84,7 @@ export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, tex
       const isDraft = call.name === 'create_draft_campaign'
       const result = isDraft && campaignId !== null
         ? { error: 'Черновик в этом ответе уже создан' }
-        : runToolSafely(db, call.name, call.arguments, request)
+        : runToolSafely(db, call.name, call.arguments, requests)
       if (isDraft && 'campaign_id' in result) campaignId = result.campaign_id as number
       const message: ChatMessage = { role: 'tool', content: JSON.stringify(result), toolCallId: call.id }
       saveMessage(db, message)

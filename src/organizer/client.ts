@@ -49,10 +49,12 @@ export type OutboxPage = { items: OutboxItem[]; total: number }
 export type Limits = { subject: number; body: number }
 
 export class ApiError extends Error {
+  status: number
   campaignId: number | null
 
-  constructor(message: string, campaignId: number | null) {
+  constructor(message: string, status: number, campaignId: number | null) {
     super(message)
+    this.status = status
     this.campaignId = campaignId
   }
 }
@@ -64,7 +66,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   })
   if (!response.ok) {
     const data = await response.json().catch(() => null)
-    throw new ApiError(data?.error ?? `Ошибка ${response.status}`, data?.campaignId ?? null)
+    throw new ApiError(data?.error ?? `Ошибка ${response.status}`, response.status, data?.campaignId ?? null)
   }
   return response.json()
 }

@@ -16,8 +16,8 @@ vi.mock('../recipients.ts', () => ({ selectRecipients: vi.fn(() => []) }))
 const event = { id: 'ceramics', title: 'Мастер-класс "Керамика"', starts_at: '2026-11-13T19:00', place: 'Москва' }
 const statement = { get: vi.fn(), all: vi.fn((): object[] => []), run: vi.fn() }
 const db = { prepare: () => statement } as unknown as DatabaseSync
-const draft = (subject: string, body: string, request = '') =>
-  runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: event.id, subject, body }), request)
+const draft = (subject: string, body: string, request: string = 'Перенеси на 20 ноября, 19:00') =>
+  runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: event.id, subject, body }), [request])
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -59,15 +59,18 @@ describe('проверка письма перед созданием черно
   })
 
   it.each(['', 'Напиши покупателям', 'Перенеси на 20 ноября', 'Перенеси на 2 недели, в 19:00'])(
-    'не проверяет дату, если её нет в запросе: %s', (request) => {
-      expect(draft('Керамика', 'Здравствуйте!', request)).toEqual({ campaign_id: 1, recipients_count: 6 })
+    'просит дату и время, если их нет в запросе: %s', (request) => {
+      expect(draft('Перенос', '20 ноября, 19:00', request)).toEqual({
+        error: 'Уточните дату и время переноса: без них черновик не создаётся',
+      })
+      expect(createDraft).not.toHaveBeenCalled()
     },
   )
 
   it.each(['Лекция «История шрифта»', 'Лекция “История шрифта”', 'Лекция „История шрифта“'])(
     'берёт название из кавычек: %s', (title) => {
       statement.get.mockReturnValue({ ...event, title })
-      expect(draft('История шрифта', 'Здравствуйте!')).toEqual({ campaign_id: 1, recipients_count: 6 })
+      expect(draft('История шрифта', '20 ноября, 19:00')).toEqual({ campaign_id: 1, recipients_count: 6 })
     },
   )
 
@@ -75,6 +78,22 @@ describe('проверка письма перед созданием черно
     const request = 'Лекцию на 20 ноября, 19:00 переносим на 27 ноября, 19:00'
     expect(draft('Керамика', '20 ноября, 19:00', request)).toHaveProperty('error')
     expect(draft('Керамика', 'С 20 ноября, 19:00 на 27 ноября в 19:00', request))
+      .toEqual({ error: 'В письме указана другая дата переноса: оставьте только «27 ноября, 19:00»' })
+    expect(createDraft).not.toHaveBeenCalled()
+    expect(draft('Керамика', '27 ноября, 19:00', request)).toEqual({ campaign_id: 1, recipients_count: 6 })
+  })
+
+  it.each(['20 декабря, 19:00', '21 ноября, 19:00', '20 ноября, 19:30'])(
+    'отклоняет письмо с правильной и чужой датой: %s', (other) => {
+      expect(draft('Керамика 20 ноября, 19:00', other)).toEqual({
+        error: 'В письме указана другая дата переноса: оставьте только «20 ноября, 19:00»',
+      })
+      expect(createDraft).not.toHaveBeenCalled()
+    },
+  )
+
+  it('принимает повторение одной даты в разных форматах', () => {
+    expect(draft('Керамика 20 ноября, 19:00', '20.11.2026 в 19.00'))
       .toEqual({ campaign_id: 1, recipients_count: 6 })
   })
 
@@ -87,19 +106,74 @@ describe('проверка письма перед созданием черно
 
   it('понимает склонение названия и серии пробелов', () => {
     statement.get.mockReturnValue({ ...event, title: 'Лекция «История шрифта»' })
-    expect(draft('Об истории\u00a0  шрифта', 'Здравствуйте!'))
+    expect(draft('Об истории\u00a0  шрифта', '20 ноября, 19:00'))
       .toEqual({ campaign_id: 1, recipients_count: 6 })
   })
 
   it('проверяет полное название, если кавычек нет', () => {
     statement.get.mockReturnValue({ ...event, title: 'История шрифта' })
-    expect(draft('История', 'Здравствуйте!')).toHaveProperty('error')
+    expect(draft('История', '20 ноября, 19:00')).toHaveProperty('error')
     expect(createDraft).not.toHaveBeenCalled()
-    expect(draft('История шрифта', 'Здравствуйте!')).toEqual({ campaign_id: 1, recipients_count: 6 })
+    expect(draft('История шрифта', '20 ноября, 19:00')).toEqual({ campaign_id: 1, recipients_count: 6 })
   })
 })
 
 describe('запрос организатора', () => {
+  it.each([
+    [['Переносим Керамику на 20 ноября, 19:00', 'История шрифта на 27 ноября, 19:00'], '20 ноября, 19:00'],
+    [['История шрифта на 27 ноября, 19:00', 'Переносим Керамику на 20 ноября, 19:00', 'Сделай письмо короче'], '20 ноября, 19:00'],
+    [['Переносим Керамику на 20 ноября, 19:00', 'Перенеси на 27 ноября, 19:00'], '27 ноября, 19:00'],
+    [['Переносим Керамику на 20 ноября, 19:00', 'Переносим Керамику и Историю шрифта на 27 ноября, 19:00'], '27 ноября, 19:00'],
+  ])('выбирает последнюю дату своего мероприятия из истории: %j', (requests, date) => {
+    statement.all.mockReturnValueOnce([event, { id: 'fonts', title: 'Лекция "История шрифта"' }])
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({
+      event_id: event.id, subject: 'Керамика', body: date,
+    }), requests)).toEqual({ campaign_id: 1, recipients_count: 6 })
+  })
+
+  it.each(['27 ноября, 19:00', '27 ноября'])(
+    'не использует дату другого мероприятия: %s', (date) => {
+      statement.all.mockReturnValueOnce([event, { id: 'fonts', title: 'Лекция "История шрифта"' }])
+      expect(runTool(db, 'create_draft_campaign', JSON.stringify({
+        event_id: event.id, subject: 'Керамика', body: '27 ноября, 19:00',
+      }), ['Переносим Историю шрифта на 20 ноября, 19:00', `Переносим Керамику на ${date}`]))
+        .toEqual(date.includes('19:00')
+          ? { campaign_id: 1, recipients_count: 6 }
+          : { error: 'Уточните дату и время переноса: без них черновик не создаётся' })
+      if (!date.includes('19:00')) expect(createDraft).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['20 декабря, 19:00', '20 ноября, 19:00'])(
+    'сохраняет проверку даты после созданного черновика: %s', async (date) => {
+      statement.all.mockReturnValueOnce([
+        { role: 'user', content: 'Сделай письмо короче', tool_calls: null, tool_call_id: null },
+        { role: 'tool', content: '{"campaign_id":1}', tool_calls: null, tool_call_id: 'previous' },
+        { role: 'user', content: 'Переносим Керамику на 20 ноября, 19:00', tool_calls: null, tool_call_id: null },
+      ])
+      let step = 0
+      const llm: LlmClient = {
+        chat: async () => step++ === 0
+          ? { content: null, toolCalls: [{
+            id: 'draft', name: 'create_draft_campaign',
+            arguments: JSON.stringify({ event_id: event.id, subject: 'Керамика', body: date }),
+          }] }
+          : { content: 'Готово', toolCalls: [] },
+      }
+      const result = await sendAssistantMessage(db, llm, 'Сделай письмо короче')
+      if (date === '20 ноября, 19:00') {
+        expect(result.campaignId).toBe(1)
+        expect(createDraft).toHaveBeenCalledWith(db, { eventId: event.id, subject: 'Керамика', body: date })
+      } else {
+        expect(result.campaignId).toBeNull()
+        expect(statement.run).toHaveBeenCalledWith('tool', JSON.stringify({
+          error: 'В письме должны быть название мероприятия и новая дата: добавьте дату «20 ноября, 19:00»',
+        }), null, 'draft', expect.any(String))
+        expect(createDraft).not.toHaveBeenCalled()
+      }
+    },
+  )
+
   it.each([
     ['Перенеси на 20 ноября, 19:00', 'Перенеси на 25 ноября в 18:30'],
     ['Перенеси на 25 ноября в 18:30', 'да, создай'],
@@ -137,6 +211,6 @@ describe('запрос организатора', () => {
     const reply = await createFakeLlm().chat(messages, [])
     const call = reply.toolCalls[0]
     expect(call.name).toBe('create_draft_campaign')
-    expect(runTool(db, call.name, call.arguments, request)).toEqual({ campaign_id: 1, recipients_count: 6 })
+    expect(runTool(db, call.name, call.arguments, [request])).toEqual({ campaign_id: 1, recipients_count: 6 })
   })
 })

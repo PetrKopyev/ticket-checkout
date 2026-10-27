@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmCampaign, getCampaign, getRecipients, resumeCampaign, updateCampaign } from './client'
+import { ApiError, confirmCampaign, getCampaign, getRecipients, resumeCampaign, updateCampaign } from './client'
 import type { Campaign, Limits, RecipientsTab } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
@@ -42,22 +42,22 @@ const CampaignPanel = ({ campaignId, limits, onProgress, sentRequest }: {
   const [isBusy, setIsBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [isConflict, setIsConflict] = useState(false)
+  const [lastSentRequest, setLastSentRequest] = useState(sentRequest)
   const [pollAttempt, setPollAttempt] = useState(0)
   const [isSent, setIsSent] = useState(false)
   const sendButton = useRef<HTMLButtonElement>(null)
   const recipientsButton = useRef<HTMLButtonElement>(null)
   const progress = useRef<HTMLDivElement>(null)
   const busy = useRef(false)
-  const lastSentRequest = useRef(sentRequest)
 
-  useEffect(() => {
-    if (lastSentRequest.current === sentRequest) return
-    lastSentRequest.current = sentRequest
+  if (sentRequest !== lastSentRequest) {
+    setLastSentRequest(sentRequest)
     if (sentRequest > 0) {
       setDialogTab('sent')
       setIsRecipientsOpen(true)
     }
-  }, [sentRequest])
+  }
 
   const apply = (next: Campaign) => {
     setCampaign(next)
@@ -139,11 +139,14 @@ const CampaignPanel = ({ campaignId, limits, onProgress, sentRequest }: {
     busy.current = true
     setIsBusy(true)
     setError('')
+    setIsConflict(false)
     try {
       apply(await action())
+      setIsConflict(false)
       return true
     } catch (reason) {
       setError((reason as Error).message)
+      setIsConflict(reason instanceof ApiError && reason.status === 409)
       return false
     } finally {
       busy.current = false
@@ -295,7 +298,11 @@ const CampaignPanel = ({ campaignId, limits, onProgress, sentRequest }: {
             type="button"
             disabled={isBusy || errors.length > 0}
             aria-describedby="send-hint"
-            onClick={() => setIsConfirming(true)}
+            onClick={() => {
+              setError('')
+              setIsConflict(false)
+              setIsConfirming(true)
+            }}
             className={primaryButtonClass}
           >
             Подтвердить и отправить
@@ -315,14 +322,17 @@ const CampaignPanel = ({ campaignId, limits, onProgress, sentRequest }: {
           excludedCount={excluded.length}
           isBusy={isBusy}
           error={error}
+          isConflict={isConflict}
           onConfirm={send}
           onRefresh={async () => {
             try {
               apply(await getCampaign(campaign.id))
               setError('')
+              setIsConflict(false)
               return true
             } catch (reason) {
               setError((reason as Error).message)
+              setIsConflict(reason instanceof ApiError && reason.status === 409)
               return false
             }
           }}

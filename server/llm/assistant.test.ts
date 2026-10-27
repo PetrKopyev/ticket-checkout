@@ -17,7 +17,7 @@ beforeEach(() => {
 })
 
 describe('assistant', () => {
-  it('не берёт дату из запроса до последнего созданного черновика', async () => {
+  it.each(['27 ноября, 19:00', '27 ноября'])('не берёт дату другого мероприятия: %s', async (date) => {
     const first = await sendAssistantMessage(db, createFakeLlm(), 'Переносим мастер-класс "Керамика" на 20 ноября, 19:00')
     expect(first.campaignId).not.toBeNull()
     let step = 0
@@ -25,14 +25,52 @@ describe('assistant', () => {
       chat: async () => step++ === 0
         ? { content: null, toolCalls: [{
           id: 'draft', name: 'create_draft_campaign',
-          arguments: JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: 'Лекция "История шрифта" переносится на 27 ноября' }),
+          arguments: JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: '27 ноября, 19:00' }),
         }] }
         : { content: 'Готово', toolCalls: [] },
     }
-    await sendAssistantMessage(db, llm, 'Переносим «История шрифта» на 27 ноября')
+    const { campaignId } = await sendAssistantMessage(db, llm, `Переносим «История шрифта» на ${date}`)
     const result = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool' ORDER BY id DESC LIMIT 1").get() as { content: string }
-    expect(JSON.parse(result.content)).toHaveProperty('campaign_id')
+    if (date.includes('19:00')) {
+      expect(JSON.parse(result.content)).toHaveProperty('campaign_id')
+      expect(campaignId).not.toBeNull()
+      expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 2 })
+    } else {
+      expect(JSON.parse(result.content)).toEqual({
+        error: 'Уточните дату и время переноса: без них черновик не создаётся',
+      })
+      expect(campaignId).toBeNull()
+      expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 1 })
+    }
   })
+
+  it.each(['20 декабря, 19:00', '20 ноября, 19:00'])(
+    'проверяет дату при сокращении созданного письма: %s', async (date) => {
+      await sendAssistantMessage(db, createFakeLlm(), 'Переносим Керамику на 20 ноября, 19:00')
+      let step = 0
+      const llm: LlmClient = {
+        chat: async () => step++ === 0
+          ? { content: null, toolCalls: [{
+            id: 'draft', name: 'create_draft_campaign',
+            arguments: JSON.stringify({ event_id: 'ceramics', subject: 'Керамика', body: date }),
+          }] }
+          : { content: 'Готово', toolCalls: [] },
+      }
+      const { campaignId } = await sendAssistantMessage(db, llm, 'Сделай письмо короче')
+      const result = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool' ORDER BY id DESC LIMIT 1").get() as { content: string }
+      if (date === '20 ноября, 19:00') {
+        expect(JSON.parse(result.content)).toHaveProperty('campaign_id')
+        expect(getCampaign(db, campaignId as number)?.body).toBe(date)
+        expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 2 })
+      } else {
+        expect(JSON.parse(result.content)).toEqual({
+          error: 'В письме должны быть название мероприятия и новая дата: добавьте дату «20 ноября, 19:00»',
+        })
+        expect(campaignId).toBeNull()
+        expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 1 })
+      }
+    },
+  )
 
   it('проверяет дату из предыдущего запроса при подтверждении без даты', async () => {
     await sendAssistantMessage(db, {
@@ -169,9 +207,11 @@ describe('assistant', () => {
     expect(getCampaign(db, campaignId as number)?.body).toContain(date)
   })
 
-  it('готовит письмо без даты', async () => {
-    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Напиши покупателям мастер-класса "Керамика"')
-    expect(getCampaign(db, campaignId as number)?.subject).toBe('Мастер-класс "Керамика": важная информация')
+  it('просит уточнить дату', async () => {
+    const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Напиши покупателям мастер-класса "Керамика"')
+    expect(campaignId).toBeNull()
+    expect(reply).toBe('Укажите новую дату и время переноса, например: «на 20 ноября, 19:00»')
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
   })
 
   it('ошибка инструмента попадает в историю и в ответ, следующий запрос работает', async () => {
@@ -187,14 +227,14 @@ describe('assistant', () => {
   })
 
   it('создаёт не больше одного черновика за ход', async () => {
-    const args = JSON.stringify({ event_id: 'ceramics', subject: 'Тема', body: 'Керамика' })
+    const args = JSON.stringify({ event_id: 'ceramics', subject: 'Тема', body: 'Керамика 20 ноября, 19:00' })
     let step = 0
     const greedy: LlmClient = {
       chat: async () => step++ === 0
         ? { content: null, toolCalls: [1, 2].map((n) => ({ id: `call_${n}`, name: 'create_draft_campaign', arguments: args })) }
         : { content: 'Готово', toolCalls: [] },
     }
-    const { campaignId } = await sendAssistantMessage(db, greedy, 'Сделай два черновика')
+    const { campaignId } = await sendAssistantMessage(db, greedy, 'Сделай два черновика Керамики на 20 ноября, 19:00')
     expect(db.prepare('SELECT id FROM campaigns').all()).toEqual([{ id: campaignId }])
     const tools = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool' ORDER BY id").all() as { content: string }[]
     expect(JSON.parse(tools[1].content)).toEqual({ error: 'Черновик в этом ответе уже создан' })
@@ -257,22 +297,22 @@ describe('tools', () => {
   })
 
   it('возвращают ошибку на неверные аргументы', () => {
-    expect(runTool(db, 'get_event', 'не json', '')).toHaveProperty('error')
-    expect(runTool(db, 'get_event', '{"event_id":"nope"}', '')).toHaveProperty('error')
-    expect(runTool(db, 'list_recipients', '{}', '')).toHaveProperty('error')
-    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"","body":"История шрифта"}', ''))
+    expect(runTool(db, 'get_event', 'не json', [])).toHaveProperty('error')
+    expect(runTool(db, 'get_event', '{"event_id":"nope"}', [])).toHaveProperty('error')
+    expect(runTool(db, 'list_recipients', '{}', [])).toHaveProperty('error')
+    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"","body":"История шрифта 20 ноября, 19:00"}', ['Перенеси на 20 ноября, 19:00']))
       .toEqual({ error: 'Тема не может быть пустой' })
-    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"x"}', ''))
+    expect(runTool(db, 'create_draft_campaign', '{"event_id":"fonts","subject":"x"}', []))
       .toEqual({ error: 'Тема и текст письма должны быть строками' })
-    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'а'.repeat(201), body: 'История шрифта' }), ''))
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'а'.repeat(201), body: 'История шрифта 20 ноября, 19:00' }), ['Перенеси на 20 ноября, 19:00']))
       .toEqual({ error: 'Тема длиннее 200 символов' })
-    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: 'а'.repeat(5001) }), ''))
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: 'fonts', subject: 'История шрифта', body: '20 ноября, 19:00 ' + 'а'.repeat(5001) }), ['Перенеси на 20 ноября, 19:00']))
       .toEqual({ error: 'Текст длиннее 5000 символов' })
     expect(db.prepare('SELECT COUNT(*) AS n FROM campaigns').get()).toEqual({ n: 0 })
-    expect(runTool(db, 'send_campaign', '{}', '')).toHaveProperty('error')
+    expect(runTool(db, 'send_campaign', '{}', [])).toHaveProperty('error')
   })
 
   it('считают получателей по уникальным email и не раскрывают адреса', () => {
-    expect(runTool(db, 'list_recipients', '{"event_id":"ceramics"}', '')).toEqual({ count: 6 })
+    expect(runTool(db, 'list_recipients', '{"event_id":"ceramics"}', [])).toEqual({ count: 6 })
   })
 })

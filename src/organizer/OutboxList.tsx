@@ -33,6 +33,7 @@ const OutboxList = ({ campaigns, currentCampaignId, reloadKey, onReload, onShowA
   const groups = campaigns
     .map((campaign) => ({ campaign, letters: items.filter((item) => item.campaignId === campaign.id) }))
     .filter((group) => group.letters.length > 0)
+  const sent = campaigns.find((campaign) => campaign.id === currentCampaignId)?.sent ?? 0
 
   return (
     <section aria-labelledby="outbox-heading" className={`${cardClass} max-sm:px-3 max-sm:py-4`}>
@@ -44,10 +45,10 @@ const OutboxList = ({ campaigns, currentCampaignId, reloadKey, onReload, onShowA
       {total > items.length && (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <p className="text-sm text-ink-muted">Показаны последние {items.length} из {total}</p>
-          {(campaigns.find((campaign) => campaign.id === currentCampaignId)?.sent ?? 0) > 0 && (
-            <button type="button" onClick={onShowAll} className={secondaryButtonClass}>Показать все ({total})</button>
-          )}
         </div>
+      )}
+      {sent > 3 && (
+        <button type="button" onClick={onShowAll} className={`${secondaryButtonClass} mt-2`}>Показать все ({sent})</button>
       )}
       {error && <p role="alert" className={`${alertClass} mt-4`}>Не удалось загрузить письма: {error}</p>}
       {!error && groups.length === 0 && <p className="mt-4 text-ink-muted">Писем пока нет</p>}

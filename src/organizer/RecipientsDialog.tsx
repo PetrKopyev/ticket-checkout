@@ -248,7 +248,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }:
               return (
                 <li key={recipient.email} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3">
                   <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-                    <p className={`break-all ${recipient.excluded ? 'text-ink-muted line-through' : ''}`}>{recipient.email}</p>
+                    <p className={`break-words ${recipient.excluded ? 'text-ink-muted line-through' : ''}`}>{recipient.email}</p>
                     <p className={`mt-1 text-sm ${recipient.excluded ? 'text-ink-muted' : view.className}`}>
                       {recipient.excluded ? 'Исключён' : view.label}
                     </p>
@@ -318,6 +318,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }:
           isResend
           isBusy={isBusy}
           error={actionError}
+          isConflict={false}
           onConfirm={include}
           onClose={() => {
             setConfirmation(null)

@@ -53,7 +53,7 @@ const parseArgs = (json: string): Record<string, unknown> | null => {
   }
 }
 
-export const runTool = (db: DatabaseSync, name: string, argsJson: string, request: string): object => {
+export const runTool = (db: DatabaseSync, name: string, argsJson: string, requests: string[]): object => {
   const args = parseArgs(argsJson)
   if (!args) return { error: 'Аргументы должны быть JSON-объектом' }
   if (name === 'list_events') {
@@ -71,14 +71,23 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string, reques
   if (typeof subject !== 'string' || typeof body !== 'string') return { error: 'Тема и текст письма должны быть строками' }
   const letter = normalize(`${subject} ${body}`)
   const title = eventTitle(event.title)
-  const date = parseMoveDate(request)
+  const events = db.prepare('SELECT id, title FROM events').all() as { id: string; title: string }[]
+  const request = requests.findLast((text) => parseMoveDate(text)
+    && (mentions(text, title) || !events.some((item) => item.id !== event.id && mentions(text, item.title))))
+  const date = request ? parseMoveDate(request) : null
+  if (!date) return { error: 'Уточните дату и время переноса: без них черновик не создаётся' }
+  const dates = parseLetterDates(letter)
+  const matches = (item: typeof date) => item.day === date.day && item.month === date.month
+    && timeMinutes(item.time) === timeMinutes(date.time)
   const missing = []
   if (!mentions(letter, title)) missing.push(`название «${title}»`)
-  if (date && !parseLetterDates(letter).some((item) =>
-    item.day === date.day && item.month === date.month && timeMinutes(item.time) === timeMinutes(date.time))) {
+  if (!dates.some(matches)) {
     missing.push(`дату «${date.day} ${date.month}, ${date.time}»`)
   }
   if (missing.length) return { error: `В письме должны быть название мероприятия и новая дата: добавьте ${missing.join(' и ')}` }
+  if (dates.some((item) => !matches(item))) {
+    return { error: `В письме указана другая дата переноса: оставьте только «${date.day} ${date.month}, ${date.time}»` }
+  }
   try {
     const campaign = createDraft(db, { eventId: event.id, subject, body })
     return { campaign_id: campaign.id, recipients_count: campaign.total }

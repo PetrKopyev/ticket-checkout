@@ -3,7 +3,7 @@ import { useBackdropClose } from './dialog'
 import { plural } from '../format'
 import { alertClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
-const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, email, isResend, isBusy, error, onConfirm, onRefresh, onClose }: {
+const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, email, isResend, isBusy, error, isConflict, onConfirm, onRefresh, onClose }: {
   eventTitle: string
   eventDate: string
   subject: string
@@ -14,6 +14,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
   isResend?: boolean
   isBusy: boolean
   error: string
+  isConflict: boolean
   onConfirm: () => Promise<boolean>
   onRefresh?: () => Promise<boolean>
   onClose: (sent: boolean) => void
@@ -83,7 +84,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
         >
           Отмена
         </button>
-        {error && onRefresh ? (
+        {isConflict && onRefresh ? (
           <button type="button" disabled={isBusy} onClick={(event) => event.detail <= 1 && refresh()} className={primaryButtonClass}>
             Обновить
           </button>
