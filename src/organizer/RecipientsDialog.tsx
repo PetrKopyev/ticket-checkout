@@ -55,11 +55,9 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
 
   useEffect(() => {
     const opener = document.activeElement
-    const element = dialog.current
-    element?.showModal()
+    dialog.current?.showModal()
     search.current?.focus()
     return () => {
-      element?.close()
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
     }
   }, [])
@@ -164,7 +162,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
       ref={dialog}
       aria-labelledby="recipients-heading"
       onCancel={(event) => event.target === event.currentTarget && isBusy && event.preventDefault()}
-      onClose={(event) => { if (event.target === event.currentTarget) onClose() }}
+      onClose={(event) => { if (event.target === event.currentTarget && !event.currentTarget.open) onClose() }}
       className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl overflow-hidden rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
     >
       <div ref={scroll} className="max-h-[calc(100dvh-1rem-2px)] min-w-0 overflow-y-auto overscroll-contain">
