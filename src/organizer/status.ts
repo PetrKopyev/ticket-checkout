@@ -1,13 +1,13 @@
-import type { Campaign, CampaignStatus, CampaignSummary } from './client'
+import type { Campaign, CampaignStatus, CampaignSummary, Recipient } from './client'
 import { plural } from '../format'
 
 export type Summary = { sent: number; failed: number; pending: number; excluded: number }
 
-export const summarize = ({ sent, failed, pending, recipients }: Campaign): Summary => ({
+export const summarize = ({ sent, failed, pending, excluded }: Campaign): Summary => ({
   sent,
   failed,
   pending,
-  excluded: recipients.filter((recipient) => recipient.excluded).length,
+  excluded,
 })
 
 const statusLabels: Record<CampaignStatus, string> = {
@@ -22,8 +22,8 @@ export const statusLabel = (status: CampaignStatus, sent: number) =>
 
 export const partialTitle = (sent: number) => sent === 0 ? 'Письма не отправлены' : 'Часть писем не ушла'
 
-export const firstError = (campaign: Campaign) =>
-  campaign.recipients.find((recipient) => recipient.status === 'failed' && !recipient.excluded)?.error ?? null
+export const firstError = (items: Recipient[]) =>
+  items.find((recipient) => recipient.status === 'failed' && !recipient.excluded)?.error ?? null
 
 export const partialMessage = ({ failed, pending }: Summary, error: string | null) => {
   const letters = `${pending} ${plural(pending, 'письмо', 'письма', 'писем')}`

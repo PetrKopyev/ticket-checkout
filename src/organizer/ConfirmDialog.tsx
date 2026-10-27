@@ -35,7 +35,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
       aria-describedby="confirm-summary"
       onCancel={(event) => isBusy && event.preventDefault()}
       onClose={(event) => onClose(event.currentTarget.returnValue === 'sent')}
-      className="m-auto w-[calc(100%-1rem)] max-w-lg rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
+      className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-lg overflow-y-auto rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
     >
       <div className="p-5 max-sm:px-3 max-sm:py-4">
         <h2 id="confirm-heading" className="text-lg sm:text-xl">{email ? 'Дослать письмо?' : 'Отправить рассылку?'}</h2>
@@ -51,8 +51,8 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
             </div>
           ) : (
             <p>
-              Отправить {recipientsCount}{'\u00a0'}{plural(recipientsCount, 'получателю', 'получателям', 'получателям')},
-              исключено{'\u00a0'}{excludedCount}
+              Отправить {recipientsCount} {plural(recipientsCount, 'получателю', 'получателям', 'получателям')},
+              исключено {excludedCount}
             </p>
           )}
           <div className="rounded-control border border-line bg-bg-soft p-3">

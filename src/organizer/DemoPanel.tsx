@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react'
-import { getDemo, resetDemo, setMailerDown } from './client'
+import { demoBig, getDemo, resetDemo, setMailerDown } from './client'
 import { alertClass, secondaryButtonClass } from '../components/ui'
 
-const DemoPanel = ({ onReset }: { onReset: () => void }) => {
+const DemoPanel = ({ onReset, onBigDemo }: { onReset: () => void; onBigDemo: (campaignId: number) => void }) => {
   const [mailerDown, setDown] = useState(false)
   const [error, setError] = useState('')
+  const [isBusy, setIsBusy] = useState(false)
+
+  const bigDemo = async () => {
+    if (isBusy) return
+    setIsBusy(true)
+    setError('')
+    try {
+      const demo = await demoBig()
+      onBigDemo(demo.campaignId)
+    } catch (reason) {
+      setError(`Не удалось создать демо: ${(reason as Error).message}`)
+    } finally {
+      setIsBusy(false)
+    }
+  }
 
   useEffect(() => {
     getDemo().then((demo) => setDown(demo.mailerDown), (reason: Error) => setError(reason.message))
@@ -66,7 +81,11 @@ const DemoPanel = ({ onReset }: { onReset: () => void }) => {
           </label>
         </div>
       </fieldset>
-      <button type="button" onClick={reset} className={`${secondaryButtonClass} mt-4`}>
+      <button type="button" disabled={isBusy} onClick={bigDemo} className={`${secondaryButtonClass} mt-4`}>
+        Демо: рассылка на 1000 получателей
+      </button>
+      <p className="mt-2 text-sm text-ink-muted">Демонстрация большого списка: 1000 покупок, 860 уникальных адресов.</p>
+      <button type="button" disabled={isBusy} onClick={reset} className={`${secondaryButtonClass} mt-4`}>
         Сбросить данные
       </button>
       {error && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}

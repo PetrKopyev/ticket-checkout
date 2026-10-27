@@ -18,6 +18,12 @@ export type Recipient = {
   excluded: boolean
 }
 
+export type RecipientsTab = 'all' | 'sent' | 'pending' | 'failed' | 'excluded'
+
+export type RecipientCounts = Record<RecipientsTab, number>
+
+export type RecipientsPage = { items: Recipient[]; total: number; counts: RecipientCounts }
+
 export type Campaign = {
   id: number
   eventId: string
@@ -32,7 +38,6 @@ export type Campaign = {
   pending: number
   excluded: number
   excludedEmails: string[]
-  recipients: Recipient[]
 }
 
 export type CampaignPatch = { subject?: string; body?: string; excluded?: string[] }
@@ -74,32 +79,29 @@ export const getLimits = () => request<Limits>('/limits')
 
 export const listCampaigns = () => request<CampaignSummary[]>('/campaigns')
 
-// TODO: окно «Получатели» грузит страницы само, полный список не нужен
-const withRecipients = async (campaign: Omit<Campaign, 'recipients'>): Promise<Campaign> => {
-  const recipients: Recipient[] = []
-  let total = 0
-  do {
-    const page = await request<{ items: Recipient[]; total: number }>(
-      `/campaigns/${campaign.id}/recipients?tab=all&limit=100&offset=${recipients.length}`,
-    )
-    recipients.push(...page.items)
-    total = page.total
-  } while (recipients.length < total)
-  return { ...campaign, recipients }
-}
+export const getCampaign = (id: number) => request<Campaign>(`/campaigns/${id}`)
 
-export const getCampaign = (id: number) => request<Omit<Campaign, 'recipients'>>(`/campaigns/${id}`).then(withRecipients)
+export const getRecipients = (id: number, { tab = 'all', q = '', offset = 0, limit = 20 }: {
+  tab?: RecipientsTab
+  q?: string
+  offset?: number
+  limit?: number
+} = {}) => request<RecipientsPage>(
+  `/campaigns/${id}/recipients?tab=${tab}${q ? `&q=${encodeURIComponent(q)}` : ''}&offset=${offset}&limit=${limit}`,
+)
 
 export const updateCampaign = (id: number, patch: CampaignPatch) =>
-  request<Omit<Campaign, 'recipients'>>(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then(withRecipients)
+  request<Campaign>(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
 
 export const confirmCampaign = (id: number, shown: Required<CampaignPatch>) =>
-  post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/confirm`, shown).then(withRecipients)
+  post<Campaign>(`/campaigns/${id}/confirm`, shown)
 
-export const resumeCampaign = (id: number) => post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/resume`).then(withRecipients)
+export const resumeCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/resume`)
 
 export const includeRecipient = (id: number, email: string) =>
-  post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/include`, { email }).then(withRecipients)
+  post<Campaign>(`/campaigns/${id}/include`, { email })
+
+export const includeAll = (id: number) => post<Campaign>(`/campaigns/${id}/include-all`)
 
 export const getOutbox = () => request<OutboxItem[]>('/outbox')
 
@@ -108,3 +110,5 @@ export const getDemo = () => request<{ mailerDown: boolean }>('/demo')
 export const setMailerDown = (down: boolean) => post<{ mailerDown: boolean }>('/demo/mailer', { down })
 
 export const resetDemo = () => post<{ ok: true }>('/demo/reset')
+
+export const demoBig = () => post<{ campaignId: number; recipients: number }>('/demo/big')

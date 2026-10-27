@@ -3,6 +3,7 @@ import { getLimits, listCampaigns } from './client'
 import type { CampaignSummary, Limits } from './client'
 import ChatPanel from './ChatPanel'
 import CampaignPanel from './CampaignPanel'
+import CampaignList from './CampaignList'
 import OutboxList from './OutboxList'
 import DemoPanel from './DemoPanel'
 import { isUnfinished } from './status'
@@ -31,8 +32,9 @@ const Organizer = () => {
   useEffect(() => {
     listCampaigns().then(
       (list) => {
-        setCampaigns(list)
-        setCampaignId(list[0]?.id ?? null)
+        const sorted = [...list].sort((a, b) => b.id - a.id)
+        setCampaigns(sorted)
+        setCampaignId(sorted[0]?.id ?? null)
       },
       (reason: Error) => setError(reason.message),
     )
@@ -43,7 +45,7 @@ const Organizer = () => {
     listCampaigns().then(
       (list) => {
         setError('')
-        setCampaigns(list)
+        setCampaigns([...list].sort((a, b) => b.id - a.id))
       },
       (reason: Error) => {
         setError(reason.message)
@@ -73,6 +75,7 @@ const Organizer = () => {
 
   const openCampaign = (id: number) => {
     setCampaignId(id)
+    setOpenKey((previous) => previous + 1)
     campaignArea.current?.focus()
   }
 
@@ -110,13 +113,14 @@ const Organizer = () => {
       <div className="grid min-w-0 items-start gap-6 lg:grid-cols-2">
         <ChatPanel key={resetKey} onCampaign={showCampaign} onOpenCampaign={openCampaign} />
         <div className="grid min-w-0 gap-6">
+          <CampaignList campaigns={campaigns} campaignId={campaignId} onOpen={openCampaign} />
           <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">
             <CampaignPanel key={`${campaignId}-${openKey}`} campaignId={campaignId} limits={limits} onProgress={reloadOutbox} />
           </div>
           <OutboxList campaigns={campaigns} reloadKey={outboxKey} onReload={reloadOutbox} />
         </div>
       </div>
-      <DemoPanel key={resetKey} onReset={reset} />
+      <DemoPanel key={resetKey} onReset={reset} onBigDemo={showCampaign} />
     </>
   )
 }

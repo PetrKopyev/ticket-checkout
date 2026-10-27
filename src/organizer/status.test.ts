@@ -5,7 +5,7 @@ import { canInclude, eventDateLabel, firstError, isUnfinished, partialMessage, p
 const recipient = (email: string, status: Recipient['status'], error: string | null = null, excluded = false): Recipient =>
   ({ email, status, error, excluded })
 
-const campaign = (recipients: Recipient[]): Campaign => ({
+const campaign = (overrides: Partial<Campaign> = {}): Campaign => ({
   id: 1,
   eventId: 'ceramics',
   eventTitle: 'Керамика',
@@ -17,21 +17,17 @@ const campaign = (recipients: Recipient[]): Campaign => ({
   sent: 2,
   failed: 1,
   pending: 1,
-  excluded: recipients.filter((recipient) => recipient.excluded).length,
-  excludedEmails: recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email),
-  recipients,
+  excluded: 1,
+  excludedEmails: ['e@example.com'],
+  ...overrides,
 })
 
 describe('summarize', () => {
-  it('берёт счётчики из рассылки, исключённых — из получателей', () => {
-    const recipients = [
-      recipient('a@example.com', 'sent'),
-      recipient('b@example.com', 'sent'),
-      recipient('c@example.com', 'failed'),
-      recipient('d@example.com', 'pending'),
-      recipient('e@example.com', 'pending', null, true),
-    ]
-    expect(summarize(campaign(recipients))).toEqual({ sent: 2, failed: 1, pending: 1, excluded: 1 })
+  it('берёт все счётчики из рассылки без загрузки адресов', () => {
+    expect(summarize(campaign())).toEqual({ sent: 2, failed: 1, pending: 1, excluded: 1 })
+    expect(summarize(campaign({ sent: 0, failed: 0, pending: 0, excluded: 5 }))).toEqual({
+      sent: 0, failed: 0, pending: 0, excluded: 5,
+    })
   })
 })
 
@@ -63,11 +59,13 @@ describe('firstError', () => {
       recipient('b@example.com', 'sent'),
       recipient('c@example.com', 'failed', 'Служба отправки недоступна'),
     ]
-    expect(firstError(campaign(recipients))).toBe('Служба отправки недоступна')
+    expect(firstError(recipients)).toBe('Служба отправки недоступна')
   })
 
   it('без ошибок — null', () => {
-    expect(firstError(campaign([recipient('a@example.com', 'pending')]))).toBeNull()
+    expect(firstError([recipient('a@example.com', 'pending')])).toBeNull()
+    expect(firstError([])).toBeNull()
+    expect(firstError([recipient('a@example.com', 'failed')])).toBeNull()
   })
 })
 

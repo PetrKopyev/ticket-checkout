@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmCampaign, getCampaign, includeRecipient, resumeCampaign, updateCampaign } from './client'
+import { confirmCampaign, getCampaign, getRecipients, resumeCampaign, updateCampaign } from './client'
 import type { Campaign, Limits } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
-import RecipientsTable from './RecipientsTable'
+import RecipientsDialog from './RecipientsDialog'
 import { eventDateLabel, firstError, partialMessage, partialTitle, statusLabel, summarize } from './status'
 import { validate } from './validate'
 import { plural } from '../format'
@@ -16,9 +16,6 @@ import {
   primaryButtonClass,
   secondaryButtonClass,
 } from '../components/ui'
-
-const excludedOf = (campaign: Campaign) =>
-  campaign.recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email)
 
 const LengthCounter = ({ length, max }: { length: number; max: number }) => length < max * 0.8 ? null : (
   <p className={`mt-1 text-right text-xs tabular-nums ${length > max ? 'text-red' : 'text-ink-muted'}`}>
@@ -38,25 +35,34 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const [body, setBody] = useState('')
   const [excluded, setExcluded] = useState<string[]>([])
   const [isConfirming, setIsConfirming] = useState(false)
-  const [includeEmail, setIncludeEmail] = useState<string | null>(null)
+  const [isRecipientsOpen, setIsRecipientsOpen] = useState(false)
+  const [deliveryError, setDeliveryError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [pollAttempt, setPollAttempt] = useState(0)
   const [isSent, setIsSent] = useState(false)
   const sendButton = useRef<HTMLButtonElement>(null)
+  const recipientsButton = useRef<HTMLButtonElement>(null)
   const progress = useRef<HTMLDivElement>(null)
+  const busy = useRef(false)
 
   const apply = (next: Campaign) => {
     setCampaign(next)
     setSubject(next.subject)
     setBody(next.body)
-    setExcluded(excludedOf(next))
+    setExcluded(next.excludedEmails)
+    if (next.status !== 'partial') setDeliveryError(null)
   }
 
   useEffect(() => {
     if (campaignId === null) return
-    getCampaign(campaignId).then(apply, (reason: Error) => setError(reason.message))
+    let active = true
+    getCampaign(campaignId).then(
+      (next) => { if (active) apply(next) },
+      (reason: Error) => { if (active) setError(reason.message) },
+    )
+    return () => { active = false }
   }, [campaignId])
 
   useEffect(() => {
@@ -78,9 +84,20 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
 
   const sent = campaign?.sent
   const status = campaign?.status
+  const total = campaign?.total
+  useEffect(() => {
+    if (campaignId === null || status !== 'partial') return
+    let active = true
+    getRecipients(campaignId, { tab: 'failed', limit: 1 }).then(
+      (page) => { if (active) setDeliveryError(firstError(page.items)) },
+      () => {},
+    )
+    return () => { active = false }
+  }, [campaignId, status])
+
   useEffect(() => {
     if (status) onProgress()
-  }, [sent, status, onProgress])
+  }, [sent, status, total, onProgress])
 
   useEffect(() => {
     if (isSent) progress.current?.focus()
@@ -99,13 +116,15 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const isDraft = campaign.status === 'draft'
   const isDirty = subject !== campaign.subject
     || body !== campaign.body
-    || [...excluded].sort().join() !== excludedOf(campaign).sort().join()
-  const addressCount = campaign.recipients.length
+    || [...excluded].sort().join() !== [...campaign.excludedEmails].sort().join()
+  const addressCount = campaign.total + campaign.excluded
   const recipientsCount = addressCount - excluded.length
   const errors = validate({ subject, body, recipientsCount }, limits)
   const unsentCount = campaign.total - campaign.sent
 
   const run = async (action: () => Promise<Campaign>) => {
+    if (busy.current) return false
+    busy.current = true
     setIsBusy(true)
     setError('')
     try {
@@ -115,6 +134,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
       setError((reason as Error).message)
       return false
     } finally {
+      busy.current = false
       setIsBusy(false)
     }
   }
@@ -128,23 +148,16 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
     return confirmCampaign(campaign.id, { subject, body, excluded })
   })
 
-  const closeIncludeDialog = (isDone: boolean) => {
-    setIncludeEmail(null)
-    if (isDone) progress.current?.focus()
-    else setError('')
-  }
-
   const closeDialog = (isDone: boolean) => {
     setIsConfirming(false)
     if (isDone) setIsSent(true)
     else sendButton.current?.focus()
   }
 
-  const toggle = (email: string) => {
+  const updateRecipients = (next: Campaign) => {
+    setCampaign(next)
+    setExcluded(next.excludedEmails)
     setSaved(false)
-    setExcluded((previous) => previous.includes(email)
-      ? previous.filter((item) => item !== email)
-      : [...previous, email])
   }
 
   return (
@@ -222,7 +235,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
         <div role="alert" className={`${alertClass} mt-4 max-sm:px-3`}>
           <p>{partialTitle(campaign.sent)}: отправлено {campaign.sent} из {campaign.total}.</p>
           <p className="mt-1 text-sm font-normal text-ink-soft">
-            {partialMessage(summarize(campaign), firstError(campaign))}
+            {partialMessage(summarize(campaign), deliveryError)}
           </p>
           <button
             type="button"
@@ -238,20 +251,24 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
         </div>
       )}
 
-      {error && !isConfirming && !includeEmail && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
+      {error && !isConfirming && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
 
-      <RecipientsTable
-        key={campaign.id}
-        recipients={campaign.recipients}
-        summary={summarize(campaign)}
-        status={campaign.status}
-        excluded={excluded}
-        onToggle={toggle}
-        onInclude={(email) => {
-          setError('')
-          setIncludeEmail(email)
-        }}
-      />
+      <div className="mt-6">
+        <p className="text-sm text-ink-soft tabular-nums">
+          {isDraft
+            ? `Исключено ${campaign.excluded}`
+            : `Отправлено ${campaign.sent}, ошибок ${campaign.failed}, ожидает ${campaign.pending}, исключено ${campaign.excluded}`}
+        </p>
+        <button
+          ref={recipientsButton}
+          type="button"
+          disabled={isBusy}
+          onClick={() => setIsRecipientsOpen(true)}
+          className={`${secondaryButtonClass} mt-3`}
+        >
+          Получатели ({addressCount})
+        </button>
+      </div>
 
       {isDraft && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -288,19 +305,14 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
         />
       )}
 
-      {includeEmail && (
-        <ConfirmDialog
-          eventTitle={campaign.eventTitle}
-          eventDate={eventDateLabel(campaign.startsAt)}
-          subject={campaign.subject}
-          body={campaign.body}
-          recipientsCount={1}
-          excludedCount={0}
-          email={includeEmail}
-          isBusy={isBusy}
-          error={error}
-          onConfirm={() => run(() => includeRecipient(campaign.id, includeEmail))}
-          onClose={closeIncludeDialog}
+      {isRecipientsOpen && (
+        <RecipientsDialog
+          campaign={campaign}
+          onCampaign={updateRecipients}
+          onClose={() => {
+            setIsRecipientsOpen(false)
+            recipientsButton.current?.focus()
+          }}
         />
       )}
     </section>
