@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { plural } from '../format'
 import { alertClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
-const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, email, isBusy, error, onConfirm, onClose }: {
+const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, email, isResend, isBusy, error, onConfirm, onRefresh, onClose }: {
   eventTitle: string
   eventDate: string
   subject: string
@@ -10,9 +10,11 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
   recipientsCount: number
   excludedCount: number
   email?: string
+  isResend?: boolean
   isBusy: boolean
   error: string
   onConfirm: () => Promise<boolean>
+  onRefresh?: () => Promise<boolean>
   onClose: (sent: boolean) => void
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -27,6 +29,10 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
     if (await onConfirm()) dialog.current?.close('sent')
   }
 
+  const refresh = async () => {
+    if (onRefresh && await onRefresh()) dialog.current?.close()
+  }
+
   return (
     <dialog
       ref={dialog}
@@ -38,7 +44,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
       className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-lg overflow-y-auto rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
     >
       <div className="p-5 max-sm:px-3 max-sm:py-4">
-        <h2 id="confirm-heading" className="text-lg sm:text-xl">{email ? 'Дослать письмо?' : 'Отправить рассылку?'}</h2>
+        <h2 id="confirm-heading" className="text-lg sm:text-xl">{email ? 'Дослать письмо?' : isResend ? 'Дослать письма исключённым?' : 'Отправить рассылку?'}</h2>
         <div id="confirm-summary" className="mt-3 flex flex-col gap-3">
           <div>
             <p className="break-words font-semibold">{eventTitle}</p>
@@ -51,8 +57,9 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
             </div>
           ) : (
             <p>
-              Отправить {recipientsCount} {plural(recipientsCount, 'получателю', 'получателям', 'получателям')},
-              исключено {excludedCount}
+              {isResend
+                ? `Исключённые получатели: ${recipientsCount}`
+                : `Отправить ${recipientsCount} ${plural(recipientsCount, 'получателю', 'получателям', 'получателям')}, исключено ${excludedCount}`}
             </p>
           )}
           <div className="rounded-control border border-line bg-bg-soft p-3">
@@ -73,9 +80,15 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
         >
           Отмена
         </button>
-        <button type="button" disabled={isBusy} onClick={(event) => event.detail <= 1 && confirm()} className={primaryButtonClass}>
-          Отправить {recipientsCount} {plural(recipientsCount, 'письмо', 'письма', 'писем')}
-        </button>
+        {error && onRefresh ? (
+          <button type="button" disabled={isBusy} onClick={(event) => event.detail <= 1 && refresh()} className={primaryButtonClass}>
+            Обновить
+          </button>
+        ) : (
+          <button type="button" disabled={isBusy} onClick={(event) => event.detail <= 1 && confirm()} className={primaryButtonClass}>
+            {isResend ? 'Дослать' : 'Отправить'} {recipientsCount} {plural(recipientsCount, 'письмо', 'письма', 'писем')}
+          </button>
+        )}
       </div>
     </dialog>
   )

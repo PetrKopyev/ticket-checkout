@@ -308,6 +308,7 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
           recipientsCount={confirmation.count}
           excludedCount={0}
           email={confirmation.email}
+          isResend
           isBusy={isBusy}
           error={actionError}
           onConfirm={include}

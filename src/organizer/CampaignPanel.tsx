@@ -301,6 +301,16 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
           isBusy={isBusy}
           error={error}
           onConfirm={send}
+          onRefresh={async () => {
+            try {
+              apply(await getCampaign(campaign.id))
+              setError('')
+              return true
+            } catch (reason) {
+              setError((reason as Error).message)
+              return false
+            }
+          }}
           onClose={closeDialog}
         />
       )}
