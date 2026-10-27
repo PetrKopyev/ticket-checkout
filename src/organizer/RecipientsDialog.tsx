@@ -114,10 +114,10 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }:
 
   const reload = useCallback(async () => {
     const current = latestList.current
-    if (!current.offset || loadingRequest.current === current.requestId) return
+    if (loadingRequest.current === current.requestId) return
     try {
       let page: RecipientsPage | null = null
-      for (let offset = 0; offset < current.offset; offset += 100) {
+      for (let offset = 0; offset < (current.offset || 1); offset += 100) {
         const part = await getRecipients(campaign.id, { tab: current.tab, q: current.q, offset, limit: 100 })
         page = page ? { ...part, items: [...page.items, ...part.items] } : part
       }
