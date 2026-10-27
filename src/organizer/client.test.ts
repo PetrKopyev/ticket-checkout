@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, confirmCampaign, getCampaign, getLimits, includeRecipient, sendMessage, updateCampaign } from './client'
+import { ApiError, confirmCampaign, getCampaign, getLimits, includeRecipient, resumeCampaign, sendMessage, updateCampaign } from './client'
 
-const mockFetch = (response: Response) => {
-  const fetch = vi.fn(async () => response)
+const mockFetch = (response: Response, ...pages: Response[]) => {
+  const responses = [response, ...pages]
+  const fetch = vi.fn(async () => responses.shift() ?? Response.json({ items: [], total: 0 }))
   vi.stubGlobal('fetch', fetch)
   return fetch
 }
@@ -12,6 +13,40 @@ afterEach(() => {
 })
 
 describe('client', () => {
+  it.each(['get', 'update', 'confirm', 'resume', 'include'])('%s загружает все страницы получателей', async (action) => {
+    const campaign = { id: 1, total: 101, excluded: 1, excludedEmails: ['excluded@example.com'] }
+    const items = Array.from({ length: 102 }, (_, index) => ({
+      email: `user${index}@example.com`, status: 'pending', error: null, excluded: index === 101,
+    }))
+    const fetch = mockFetch(
+      Response.json(campaign),
+      Response.json({ items: items.slice(0, 100), total: 102 }),
+      Response.json({ items: items.slice(100), total: 102 }),
+    )
+    const result = await (action === 'get' ? getCampaign(1)
+      : action === 'update' ? updateCampaign(1, { body: 'Текст' })
+        : action === 'confirm' ? confirmCampaign(1, { subject: 'Перенос', body: 'Текст', excluded: [] })
+          : action === 'resume' ? resumeCampaign(1) : includeRecipient(1, 'a@example.com'))
+    expect(result).toEqual({ ...campaign, recipients: items })
+    expect(fetch).toHaveBeenNthCalledWith(2, '/api/campaigns/1/recipients?tab=all&limit=100&offset=0', {
+      headers: { 'Content-Type': 'application/json' },
+    })
+    expect(fetch).toHaveBeenNthCalledWith(3, '/api/campaigns/1/recipients?tab=all&limit=100&offset=100', {
+      headers: { 'Content-Type': 'application/json' },
+    })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('пустая рассылка получает пустую страницу', async () => {
+    mockFetch(Response.json({ id: 1, total: 0, excluded: 0 }), Response.json({ items: [], total: 0 }))
+    expect((await getCampaign(1)).recipients).toEqual([])
+  })
+
+  it('ошибка загрузки страницы передаётся вызывающему коду', async () => {
+    mockFetch(Response.json({ id: 1 }), Response.json({ error: 'Рассылка не найдена' }, { status: 404 }))
+    await expect(getCampaign(1)).rejects.toThrow('Рассылка не найдена')
+  })
+
   it('отдаёт текст ошибки сервера', async () => {
     mockFetch(Response.json({ error: 'Рассылка уже отправлена' }, { status: 409 }))
     await expect(getCampaign(1)).rejects.toThrow('Рассылка уже отправлена')

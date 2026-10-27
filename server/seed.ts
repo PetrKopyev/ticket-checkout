@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { createDraft, mustGetCampaign } from './campaigns.ts'
 import { transaction } from './db.ts'
 
 const EVENTS = [
@@ -57,4 +58,34 @@ export const resetDemo = (db: DatabaseSync): void => {
     `)
     insertData(db)
   })
+}
+
+export const createBigDemo = (db: DatabaseSync) => {
+  transaction(db, () => {
+    const { changes } = db.prepare('INSERT OR IGNORE INTO events (id, title, starts_at, place) VALUES (?, ?, ?, ?)')
+      .run('festival', 'Фестиваль "Большой город"', '2026-12-05T18:00', 'Москва')
+    if (!changes) return
+    const insert = db.prepare(
+      'INSERT INTO purchases (event_id, buyer_name, email, status, qty) VALUES (?, ?, ?, ?, ?)',
+    )
+    const email = (prefix: string, index: number) => `${prefix}${String(index).padStart(4, '0')}@example.com`
+    for (let index = 1; index <= 860; index++) {
+      insert.run('festival', `Покупатель ${index}`, email('user', index), 'active', 1)
+    }
+    for (let index = 1; index <= 60; index++) {
+      insert.run('festival', `Покупатель ${index}`, ` ${email('user', index).toUpperCase()} `, 'active', 1)
+    }
+    for (let index = 1; index <= 40; index++) {
+      insert.run('festival', `Покупатель ${index}`, email('user', index), 'cancelled', 1)
+      insert.run('festival', `Отмена ${index}`, email('cancelled', index), 'cancelled', 1)
+    }
+  })
+  const existing = db.prepare("SELECT id FROM campaigns WHERE event_id = 'festival' AND status = 'draft' ORDER BY id LIMIT 1")
+    .get() as { id: number } | undefined
+  const campaign = existing ? mustGetCampaign(db, existing.id) : createDraft(db, {
+    eventId: 'festival',
+    subject: 'Фестиваль "Большой город" переносится на 12 декабря, 18:00',
+    body: 'Ждём вас 12 декабря в 18:00. Место проведения прежнее, билеты действительны.',
+  })
+  return { campaignId: campaign.id, recipients: campaign.total + campaign.excluded }
 }

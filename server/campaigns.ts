@@ -6,6 +6,10 @@ import { normalizeEmail, selectRecipients } from './recipients.ts'
 export type CampaignStatus = 'draft' | 'sending' | 'completed' | 'partial'
 type DeliveryStatus = 'pending' | 'sent' | 'failed'
 
+export const RECIPIENT_TABS = ['all', 'sent', 'pending', 'failed', 'excluded'] as const
+type RecipientTab = typeof RECIPIENT_TABS[number]
+type RecipientCounts = Record<RecipientTab, number>
+
 type CampaignView = {
   id: number
   eventId: string
@@ -18,7 +22,8 @@ type CampaignView = {
   sent: number
   failed: number
   pending: number
-  recipients: { email: string; status: DeliveryStatus; error: string | null; attempts: number; excluded: boolean }[]
+  excluded: number
+  excludedEmails: string[]
 }
 
 export class CampaignStateError extends Error {
@@ -46,7 +51,7 @@ type CampaignRow = {
   status: CampaignStatus
 }
 
-type DeliveryRow = { email: string; status: DeliveryStatus; error: string | null; attempts: number; excluded: number }
+type DeliveryRow = { email: string; status: DeliveryStatus; error: string | null; excluded: number }
 
 const activeSends = new Set<number>()
 
@@ -62,6 +67,15 @@ const checkLetter = ({ subject, body }: { subject?: string; body?: string }) => 
   if (body !== undefined && body.length > MAX_LETTER_BODY) throw new InvalidLetterError(`Текст длиннее ${MAX_LETTER_BODY} символов`)
 }
 
+const countRecipients = (db: DatabaseSync, id: number) => db.prepare(`
+  SELECT COUNT(*) AS "all",
+    COUNT(*) FILTER (WHERE excluded = 0 AND status = 'sent') AS sent,
+    COUNT(*) FILTER (WHERE excluded = 0 AND status = 'pending') AS pending,
+    COUNT(*) FILTER (WHERE excluded = 0 AND status = 'failed') AS failed,
+    COUNT(*) FILTER (WHERE excluded = 1) AS excluded
+  FROM deliveries WHERE campaign_id = ?
+`).get(id) as RecipientCounts
+
 export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null => {
   const campaign = db.prepare(`
     SELECT c.id, c.event_id, e.title, e.starts_at, c.subject, c.body, c.status
@@ -69,11 +83,9 @@ export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null =
     WHERE c.id = ?
   `).get(id) as CampaignRow | undefined
   if (!campaign) return null
-  const deliveries = db
-    .prepare('SELECT email, status, error, attempts, excluded FROM deliveries WHERE campaign_id = ? ORDER BY email')
-    .all(id) as DeliveryRow[]
-  const counted = deliveries.filter((delivery) => !delivery.excluded)
-  const count = (status: DeliveryStatus) => counted.filter((delivery) => delivery.status === status).length
+  const counts = countRecipients(db, id)
+  const excludedEmails = db.prepare('SELECT email FROM deliveries WHERE campaign_id = ? AND excluded = 1 ORDER BY email')
+    .all(id) as { email: string }[]
   return {
     id: campaign.id,
     eventId: campaign.event_id,
@@ -82,11 +94,12 @@ export const getCampaign = (db: DatabaseSync, id: number): CampaignView | null =
     subject: campaign.subject,
     body: campaign.body,
     status: campaign.status,
-    total: counted.length,
-    sent: count('sent'),
-    failed: count('failed'),
-    pending: count('pending'),
-    recipients: deliveries.map((delivery) => ({ ...delivery, excluded: delivery.excluded === 1 })),
+    total: counts.all - counts.excluded,
+    sent: counts.sent,
+    failed: counts.failed,
+    pending: counts.pending,
+    excluded: counts.excluded,
+    excludedEmails: excludedEmails.map((recipient) => recipient.email),
   }
 }
 
@@ -94,6 +107,28 @@ export const mustGetCampaign = (db: DatabaseSync, id: number) => {
   const campaign = getCampaign(db, id)
   if (!campaign) throw new CampaignNotFoundError('Рассылка не найдена')
   return campaign
+}
+
+export const listRecipients = (
+  db: DatabaseSync,
+  id: number,
+  { tab = 'all', q = '', offset = 0, limit = 20 }: { tab?: RecipientTab; q?: string; offset?: number; limit?: number } = {},
+) => {
+  if (!db.prepare('SELECT 1 FROM campaigns WHERE id = ?').get(id)) {
+    throw new CampaignNotFoundError('Рассылка не найдена')
+  }
+  const counts = countRecipients(db, id)
+  const filter = tab === 'all' ? '' : tab === 'excluded' ? ' AND excluded = 1' : ' AND excluded = 0 AND status = ?'
+  const params: (string | number)[] = [id]
+  if (tab !== 'all' && tab !== 'excluded') params.push(tab)
+  const query = q.trim().toLowerCase()
+  const search = query ? " AND email LIKE ? ESCAPE '\\'" : ''
+  if (query) params.push(`%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`)
+  const where = `WHERE campaign_id = ?${filter}${search}`
+  const { total } = db.prepare(`SELECT COUNT(*) AS total FROM deliveries ${where}`).get(...params) as { total: number }
+  const rows = db.prepare(`SELECT email, status, error, excluded FROM deliveries ${where} ORDER BY email LIMIT ? OFFSET ?`)
+    .all(...params, limit, offset) as DeliveryRow[]
+  return { items: rows.map((row) => ({ ...row, excluded: row.excluded === 1 })), total, counts }
 }
 
 export const listCampaigns = (db: DatabaseSync) =>
@@ -130,7 +165,11 @@ export const updateDraft = (
   patch: { subject?: string; body?: string; excluded?: string[] },
 ): CampaignView => {
   checkLetter(patch)
-  if (mustGetCampaign(db, id).status !== 'draft') throw new CampaignStateError('Рассылка уже подтверждена')
+  const campaign = mustGetCampaign(db, id)
+  if (campaign.status !== 'draft') throw new CampaignStateError('Рассылка уже подтверждена')
+  if (patch.excluded !== undefined && patch.excluded.length > campaign.total + campaign.excluded) {
+    throw new InvalidLetterError('Исключённых адресов больше, чем получателей')
+  }
   transaction(db, () => {
     if (patch.subject !== undefined) db.prepare('UPDATE campaigns SET subject = ? WHERE id = ?').run(patch.subject, id)
     if (patch.body !== undefined) db.prepare('UPDATE campaigns SET body = ? WHERE id = ?').run(patch.body, id)
@@ -146,9 +185,9 @@ export const updateDraft = (
 export const confirmCampaign = (db: DatabaseSync, id: number, shown: { subject: string; body: string; excluded: string[] }) => {
   const campaign = mustGetCampaign(db, id)
   const excluded = new Set(shown.excluded.map(normalizeEmail))
-  const savedExcluded = campaign.recipients.filter((recipient) => recipient.excluded)
+  const savedExcluded = campaign.excludedEmails
   if (shown.subject !== campaign.subject || shown.body !== campaign.body
-    || excluded.size !== savedExcluded.length || savedExcluded.some((recipient) => !excluded.has(recipient.email))) {
+    || excluded.size !== savedExcluded.length || savedExcluded.some((email) => !excluded.has(email))) {
     throw new CampaignStateError(campaign.status === 'draft'
       ? 'Рассылка изменилась в другой вкладке. Обновите страницу'
       : 'Рассылка уже отправлена с другим содержимым. Обновите страницу')
@@ -191,7 +230,7 @@ export const sendPending = async (db: DatabaseSync, mailer: Mailer, campaignId: 
     for (const { email } of emails) {
       if (!isSending()) return getCampaign(db, campaignId)
       const mail = { campaignId, email, subject: campaign.subject, body: campaign.body, idempotencyKey: mailKey(campaignId, email) }
-      const error = await mailer.send(mail).then(() => null, (error: Error) => error)
+      const error = await mailer.send(mail, campaign.total).then(() => null, (error: Error) => error)
       if (!error) {
         markSent.run(now(), campaignId, email)
       } else {
@@ -221,21 +260,36 @@ export const resumeCampaign = (db: DatabaseSync, id: number) => {
   return { campaign: mustGetCampaign(db, id), started: changes > 0 }
 }
 
-// Дослать письмо исключённому только после completed: адрес снова pending, рассылка уходит в sending.
-// Ключ письма тот же campaignId:email, так что второго письма адресу не будет.
+const checkIncludeStatus = (status: CampaignStatus) => {
+  if (status === 'draft') throw new CampaignStateError('Дослать можно после отправки рассылки')
+  if (status === 'sending') throw new CampaignStateError('Дождитесь завершения отправки')
+  if (status === 'partial') throw new CampaignStateError('Сначала повторите отправку неотправленных писем')
+}
+
 export const includeRecipient = (db: DatabaseSync, id: number, email: string) => {
   const campaign = mustGetCampaign(db, id)
-  if (campaign.status === 'draft') throw new CampaignStateError('Дослать можно после отправки рассылки')
-  if (campaign.status === 'sending') throw new CampaignStateError('Дождитесь завершения отправки')
-  if (campaign.status === 'partial') throw new CampaignStateError('Сначала повторите отправку неотправленных писем')
+  checkIncludeStatus(campaign.status)
   const normalized = normalizeEmail(email)
-  const recipient = campaign.recipients.find((item) => item.email === normalized)
+  const recipient = db.prepare('SELECT excluded FROM deliveries WHERE campaign_id = ? AND email = ?')
+    .get(id, normalized) as { excluded: number } | undefined
   if (!recipient) throw new CampaignNotFoundError('Такого получателя нет в рассылке')
   if (!recipient.excluded) throw new CampaignStateError('Получатель уже включён')
   transaction(db, () => {
     db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ?").run(id)
     db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND email = ?")
       .run(id, normalized)
+  })
+  return mustGetCampaign(db, id)
+}
+
+export const includeAllRecipients = (db: DatabaseSync, id: number) => {
+  const campaign = mustGetCampaign(db, id)
+  checkIncludeStatus(campaign.status)
+  if (!campaign.excluded) throw new CampaignStateError('Нет исключённых получателей')
+  transaction(db, () => {
+    db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ?").run(id)
+    db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND excluded = 1")
+      .run(id)
   })
   return mustGetCampaign(db, id)
 }
