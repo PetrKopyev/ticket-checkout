@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { CampaignStatus, Recipient, RecipientsPage } from './client'
-import { applyExclusion, emptyRecipientsList, replaceRecipients, mergeRecipientsPage, recipientTabs, showIncludeAll, showIncludeRecipient, toggleExcluded } from './recipientsList'
+import type { Campaign, CampaignStatus, Recipient, RecipientsPage } from './client'
+import { applyExclusion, emptyRecipientsList, replaceRecipients, mergeRecipientsPage, campaignCounts, recipientTabs, showIncludeAll, showIncludeRecipient, toggleExcluded } from './recipientsList'
 
 const recipient = (email: string): Recipient => ({ email, status: 'pending', excluded: false, error: null })
 const page = (emails: string[], total = 3): RecipientsPage => ({
@@ -106,5 +106,21 @@ describe('обновление списка на месте', () => {
     expect(replaceRecipients(list, fresh, 1, 3).items[0].status).toBe('sent')
     expect(replaceRecipients(list, fresh, 2, 3)).toBe(list)
     expect(replaceRecipients(list, fresh, 1, 5)).toBe(list)
+  })
+})
+
+describe('замена страницы и счётчики рассылки', () => {
+  it('замена возвращает offset по числу строк новой страницы', () => {
+    const list = { ...emptyRecipientsList('all', '', 1), offset: 40 }
+    const fresh = page(Array.from({ length: 15 }, (_, index) => `u${index}`), 60)
+    expect(replaceRecipients(list, fresh, 1, 40).offset).toBe(15)
+  })
+
+  it('campaignCounts: all = total + excluded', () => {
+    const campaign: Campaign = {
+      id: 1, eventId: 'e', eventTitle: 'E', startsAt: '', subject: 's', body: 'b', status: 'draft',
+      total: 5, sent: 0, failed: 0, pending: 5, excluded: 1, excludedEmails: ['a'],
+    }
+    expect(campaignCounts(campaign)).toEqual({ all: 6, sent: 0, pending: 5, failed: 0, excluded: 1 })
   })
 })

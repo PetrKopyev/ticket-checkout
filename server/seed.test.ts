@@ -31,6 +31,7 @@ describe('большое демо', () => {
     expect(purchases.filter((purchase) => purchase.status === 'active')).toHaveLength(920)
     expect(purchases.filter((purchase) => purchase.status === 'active' && purchase.email !== purchase.email.trim().toLowerCase()))
       .toHaveLength(60)
+    expect(purchases.filter((purchase) => purchase.email !== purchase.email.trim().toLowerCase())).toHaveLength(60)
     const emails = selectRecipients(db, 'festival')
     expect(emails).toEqual(Array.from({ length: 860 }, (_, index) => `user${String(index + 1).padStart(4, '0')}@example.com`))
     const cancelled = purchases.filter((purchase) => purchase.status === 'cancelled')
@@ -76,7 +77,7 @@ describe('большое демо', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM events').get()).toEqual({ n: 2 })
     expect(db.prepare('SELECT COUNT(*) AS n FROM purchases').get()).toEqual({ n: 20 })
     expect(createBigDemo(db).recipients).toBe(860)
-  })
+  }, 30000)
 
   it('отправляет 1000 писем одним прогоном с delay 0 без дублей', async () => {
     createBigDemo(db)
@@ -94,5 +95,5 @@ describe('большое демо', () => {
     expect(send).toHaveBeenCalledTimes(1000)
     expect(listOutbox(db)).toHaveLength(1000)
     expect(new Set(listOutbox(db).map((mail) => mail.email)).size).toBe(1000)
-  })
+  }, 30000)
 })

@@ -184,6 +184,15 @@ describe('черновик', () => {
     expect(count('campaigns')).toBe(1)
   })
 
+  it('лимит исключений — total + excluded: 6 допустимо, 7 нет', () => {
+    const { id } = createDraft(db, DRAFT)
+    expect(updateDraft(db, id, { excluded: ['anna@example.com'] }).excluded).toBe(1)
+    const all = Array.from({ length: CERAMICS_COUNT }, (_, index) => `user${index}@example.com`)
+    expect(() => updateDraft(db, id, { excluded: all })).not.toThrow()
+    expect(() => updateDraft(db, id, { excluded: [...all, 'extra@example.com'] }))
+      .toThrow(new InvalidLetterError('Исключённых адресов больше, чем получателей'))
+  })
+
   it('повторный список исключений заменяет прежний', () => {
     const { id } = createDraft(db, DRAFT)
     updateDraft(db, id, { excluded: ['anna@example.com'] })
