@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { IncomingHttpHeaders, Server } from 'node:http'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createGigachatLlm } from './gigachat.ts'
 import { createLlm, providerName } from './select.ts'
 import type { ChatMessage, ToolDef } from './types.ts'
+
+vi.mock('node:fs', () => ({ readFileSync: vi.fn() }))
 
 type CapturedRequest = { method?: string; path?: string; headers: IncomingHttpHeaders; body: string }
 
@@ -19,9 +22,11 @@ let authStatus: number
 let chatStatus: number
 let authBody: unknown
 let chatBody: unknown
+let brokenResponse: boolean
 
 const startServer = async () => {
   requests = []
+  brokenResponse = false
   authStatus = 200
   chatStatus = 200
   authBody = { access_token: accessToken, expires_at: Date.now() + 3_600_000 }
@@ -32,6 +37,13 @@ const startServer = async () => {
     req.on('data', (chunk: string) => { body += chunk })
     req.on('end', () => {
       requests.push({ method: req.method, path: req.url, headers: req.headers, body })
+      if (brokenResponse) {
+        res.writeHead(200, { 'Content-Length': '1000' })
+        res.write('{')
+        res.flushHeaders()
+        setImmediate(() => res.destroy())
+        return
+      }
       const auth = req.url === '/oauth'
       const responseBody = auth ? authBody : chatBody
       res.writeHead(auth ? authStatus : chatStatus, { 'Content-Type': 'application/json' })
@@ -234,12 +246,85 @@ describe('GigaChat', () => {
     await expect(client().chat(messages, tools)).rejects.toThrow('GigaChat: аргументы функции должны быть объектом JSON')
   })
 
-  it('не передаёт неверные аргументы из истории в ошибку', async () => {
-    await expect(client().chat([{
+  it.each(['invalid', 'null', '[]', '42'])('заменяет неверные аргументы истории на объект: %s', async (args) => {
+    await client().chat([{
       role: 'assistant', content: null,
-      toolCalls: [{ id: 'invalid', name: 'list_events', arguments: `invalid ${authKey}` }],
-    }], tools)).rejects.toThrow('GigaChat: аргументы функции должны быть объектом JSON')
-    expect(requests).toHaveLength(0)
+      toolCalls: [{ id: 'invalid', name: 'list_events', arguments: args }],
+    }], tools)
+    expect(JSON.parse(chatRequests()[0].body).messages[0].function_call.arguments).toEqual({})
+  })
+
+  it.each(['oauth', 'chat'])('ограничивает ответ %s одним МБ байтов', async (endpoint) => {
+    const oversized = 'я'.repeat(530_000)
+    expect(oversized.length).toBeLessThan(1024 * 1024)
+    if (endpoint === 'oauth') authBody = oversized
+    else chatBody = oversized
+    await expect(client().chat(messages, tools)).rejects.toThrow('GigaChat: ответ слишком большой')
+  })
+
+  it('принимает ответ размером ровно один МБ', async () => {
+    const padding = ' '.repeat(1024 * 1024 - Buffer.byteLength(JSON.stringify(chatBody)))
+    chatBody = JSON.stringify(chatBody) + padding
+    await expect(client().chat(messages, tools)).resolves.toEqual({ content: 'Привет!', toolCalls: [] })
+  })
+
+  it('обновляет токен после 401 чата', async () => {
+    const llm = client()
+    chatStatus = 401
+    await expect(llm.chat(messages, tools)).rejects.toThrow('GigaChat ответил 401')
+    chatStatus = 200
+    authBody = { access_token: 'renewed-test-token', expires_at: Date.now() + 3_600_000 }
+    await llm.chat(messages, tools)
+    expect(oauthRequests()).toHaveLength(2)
+    expect(chatRequests()[1].headers.authorization).toBe('Bearer renewed-test-token')
+  })
+
+  it('нормализует срок токена в секундах и обновляет за минуту', async () => {
+    const now = Math.floor(Date.now() / 1000) * 1000
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    authBody = { access_token: accessToken, expires_at: (now + 120_000) / 1000 }
+    const llm = client()
+    await llm.chat(messages, tools)
+    clock.mockReturnValue(now + 59_999)
+    await llm.chat(messages, tools)
+    expect(oauthRequests()).toHaveLength(1)
+    clock.mockReturnValue(now + 60_000)
+    await llm.chat(messages, tools)
+    expect(oauthRequests()).toHaveLength(2)
+  })
+
+  it('сохраняет сообщение об ошибке сертификатов и её причину', async () => {
+    const cause = new Error('test certificate failure')
+    vi.mocked(readFileSync).mockImplementationOnce(() => { throw cause })
+    const llm = createGigachatLlm({ authKey, scope: 'test', model: 'test', authUrl: 'https://127.0.0.1/oauth' })
+    await expect(llm.chat(messages, tools)).rejects.toMatchObject({
+      message: 'Не удалось загрузить сертификаты GigaChat', cause,
+    })
+  })
+
+  it('сохраняет сообщение о неподдерживаемом протоколе', async () => {
+    const llm = createGigachatLlm({ authKey, scope: 'test', model: 'test', authUrl: 'ftp://127.0.0.1/oauth' })
+    await expect(llm.chat(messages, tools)).rejects.toThrow('Неподдерживаемый протокол GigaChat')
+  })
+
+  it('сохраняет причину ошибки соединения', async () => {
+    await stopServer()
+    await expect(client().chat(messages, tools)).rejects.toMatchObject({
+      message: 'Не удалось выполнить запрос к GigaChat', cause: expect.any(Error),
+    })
+  })
+
+  it('сохраняет причину ошибки чтения ответа', async () => {
+    brokenResponse = true
+    await expect(client().chat(messages, tools)).rejects.toMatchObject({
+      message: 'Не удалось выполнить запрос к GigaChat', cause: expect.any(Error),
+    })
+  })
+
+  it('задаёт отдельный таймаут для OAuth и чата', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    await client().chat(messages, tools)
+    expect(timeout.mock.calls).toEqual([[30_000], [30_000]])
   })
 
   it('задаёт таймаут 30 секунд и безопасно сообщает об отмене запроса', async () => {
@@ -257,7 +342,11 @@ describe('выбор LLM', () => {
     [{ GIGACHAT_AUTH_KEY: authKey }, 'gigachat'],
     [{ LLM_PROVIDER: 'gigachat', GIGACHAT_AUTH_KEY: authKey }, 'gigachat'],
     [{ GIGACHAT_AUTH_KEY: authKey, LLM_API_KEY: 'test-openai-key' }, 'gigachat'],
-    [{ GIGACHAT_AUTH_KEY: authKey, LLM_PROVIDER: 'openai' }, 'gigachat'],
+    [{ GIGACHAT_AUTH_KEY: authKey, LLM_API_KEY: 'test-openai-key', LLM_PROVIDER: 'openai' }, 'openai'],
+    [{ LLM_PROVIDER: ' Fake ', GIGACHAT_AUTH_KEY: authKey }, 'fake'],
+    [{ LLM_PROVIDER: ' OPENAI ', LLM_API_KEY: 'test-openai-key' }, 'openai'],
+    [{ LLM_PROVIDER: ' GigaChat ', GIGACHAT_AUTH_KEY: authKey }, 'gigachat'],
+    [{ LLM_PROVIDER: '  ', LLM_API_KEY: 'test-openai-key' }, 'openai'],
   ])('выбирает %j → %s без сети', (env, expected) => {
     expect(providerName(env)).toBe(expected)
     expect(createLlm(env).chat).toBeTypeOf('function')
@@ -268,6 +357,19 @@ describe('выбор LLM', () => {
     expect(providerName(env)).toBe('gigachat')
     expect(() => createLlm(env)).toThrow('Для GigaChat задайте GIGACHAT_AUTH_KEY')
     expect(() => createLlm({ LLM_PROVIDER: 'gigachat', GIGACHAT_AUTH_KEY: '' })).toThrow('GIGACHAT_AUTH_KEY')
+  })
+
+  it('останавливает запуск, если OpenAI выбран без ключа', () => {
+    const env = { LLM_PROVIDER: 'openai', GIGACHAT_AUTH_KEY: authKey }
+    expect(providerName(env)).toBe('openai')
+    expect(() => createLlm(env)).toThrow('Для OpenAI задайте LLM_API_KEY')
+    expect(() => createLlm({ ...env, LLM_API_KEY: '' })).toThrow('LLM_API_KEY')
+  })
+
+  it('отклоняет неизвестного провайдера', () => {
+    const env = { LLM_PROVIDER: 'unknown', GIGACHAT_AUTH_KEY: authKey }
+    expect(() => providerName(env)).toThrow('Неизвестный LLM_PROVIDER')
+    expect(() => createLlm(env)).toThrow('Неизвестный LLM_PROVIDER')
   })
 
   it('по умолчанию возвращает работающую имитацию', async () => {

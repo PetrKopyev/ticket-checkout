@@ -6,7 +6,12 @@ import type { LlmClient } from './types.ts'
 type LlmEnv = Record<string, string | undefined>
 
 export const providerName = (env: LlmEnv = process.env) => {
-  if (env.GIGACHAT_AUTH_KEY || env.LLM_PROVIDER === 'gigachat') return 'gigachat'
+  const provider = env.LLM_PROVIDER?.trim().toLowerCase()
+  if (provider) {
+    if (provider === 'gigachat' || provider === 'openai' || provider === 'fake') return provider
+    throw new Error('Неизвестный LLM_PROVIDER: выберите gigachat, openai или fake')
+  }
+  if (env.GIGACHAT_AUTH_KEY) return 'gigachat'
   return env.LLM_API_KEY ? 'openai' : 'fake'
 }
 
@@ -21,10 +26,11 @@ export const createLlm = (env: LlmEnv = process.env): LlmClient => {
     })
   }
   if (provider === 'openai') {
+    if (!env.LLM_API_KEY) throw new Error('Для OpenAI задайте LLM_API_KEY')
     return createOpenAiLlm({
       baseUrl: env.LLM_BASE_URL ?? 'https://api.openai.com/v1',
       model: env.LLM_MODEL ?? 'gpt-4o-mini',
-      apiKey: env.LLM_API_KEY as string,
+      apiKey: env.LLM_API_KEY,
     })
   }
   return createFakeLlm()

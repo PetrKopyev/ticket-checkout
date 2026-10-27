@@ -93,7 +93,7 @@ beforeEach(() => {
 
 describe('черновик', () => {
   it('неизвестный send_campaign возвращает ошибку и не создаёт рассылку', () => {
-    expect(runTool(db, 'send_campaign', JSON.stringify({ event_id: 'ceramics', subject: 'a', body: 'b' })))
+    expect(runTool(db, 'send_campaign', JSON.stringify({ event_id: 'ceramics', subject: 'a', body: 'b' }), ''))
       .toEqual({ error: 'Неизвестный инструмент send_campaign' })
     expect(count('campaigns')).toBe(0)
   })

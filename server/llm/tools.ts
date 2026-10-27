@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { InvalidLetterError, createDraft } from '../campaigns.ts'
 import { selectRecipients } from '../recipients.ts'
+import { eventTitle, mentions, normalize, parseLetterDates, parseMoveDate, timeMinutes } from './date.ts'
 import type { ToolDef } from './types.ts'
 
 type EventRow = { id: string; title: string; starts_at: string; place: string }
@@ -53,7 +54,7 @@ const parseArgs = (json: string): Record<string, unknown> | null => {
   }
 }
 
-export const runTool = (db: DatabaseSync, name: string, argsJson: string, request?: string): object => {
+export const runTool = (db: DatabaseSync, name: string, argsJson: string, request: string): object => {
   const args = parseArgs(argsJson)
   if (!args) return { error: 'Аргументы должны быть JSON-объектом' }
   if (name === 'list_events') {
@@ -69,13 +70,14 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string, reques
   if (name === 'list_recipients') return { count: selectRecipients(db, event.id).length }
   const { subject, body } = args
   if (typeof subject !== 'string' || typeof body !== 'string') return { error: 'Тема и текст письма должны быть строками' }
-  const letter = `${subject}\n${body}`.toLowerCase()
-  const title = event.title.match(/["“”„«»'‘’]([^"“”„«»'‘’]+)["“”„«»'‘’]/)?.[1] ?? event.title
-  const date = request?.match(/на\s+(\d{1,2}\s+[а-яё]+),?\s+(?:в\s+)?(\d{1,2}:\d{2})/i)
+  const letter = normalize(`${subject} ${body}`)
+  const title = eventTitle(event.title)
+  const date = parseMoveDate(request)
   const missing = []
-  if (!letter.includes(title.toLowerCase())) missing.push(`название «${title}»`)
-  if (date && (!letter.includes(date[1].toLowerCase()) || !letter.includes(date[2]))) {
-    missing.push(`дату «${date[1]}, ${date[2]}»`)
+  if (!mentions(letter, title)) missing.push(`название «${title}»`)
+  if (date && !parseLetterDates(letter).some((item) =>
+    item.day === date.day && item.month === date.month && timeMinutes(item.time) === timeMinutes(date.time))) {
+    missing.push(`дату «${date.day} ${date.month}, ${date.time}»`)
   }
   if (missing.length) return { error: `В письме должны быть название мероприятия и новая дата: добавьте ${missing.join(' и ')}` }
   try {

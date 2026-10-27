@@ -28,13 +28,13 @@ npm run lint     # oxlint
 | `MAIL_DELAY_MS` | `400` | задержка «отправки» одного письма: на демо видно, как идёт прогресс |
 | `LLM_BASE_URL` | `https://api.openai.com/v1` | адрес OpenAI-совместимого API |
 | `LLM_MODEL` | `gpt-4o-mini` | модель |
-| `LLM_API_KEY` | нет | ключ OpenAI-совместимого API; используется, если не выбран GigaChat |
-| `GIGACHAT_AUTH_KEY` | нет | ключ авторизации GigaChat в base64; включает GigaChat с приоритетом над OpenAI |
+| `LLM_API_KEY` | нет | ключ OpenAI-совместимого API; обязателен при `LLM_PROVIDER=openai` |
+| `GIGACHAT_AUTH_KEY` | нет | ключ авторизации GigaChat в base64; обязателен при `LLM_PROVIDER=gigachat` |
 | `GIGACHAT_SCOPE` | `GIGACHAT_API_PERS` | scope для OAuth GigaChat |
 | `GIGACHAT_MODEL` | `GigaChat` | модель GigaChat |
-| `LLM_PROVIDER` | авто | `gigachat` явно выбирает GigaChat; без `GIGACHAT_AUTH_KEY` сервер выдаст ошибку при старте |
+| `LLM_PROVIDER` | авто | `gigachat`, `openai` или `fake`; регистр и пробелы по краям не важны; явный выбор имеет приоритет над ключами |
 
-Без ключей и явного выбора GigaChat используется детерминированная имитация LLM (тот же цикл с инструментами):
+Без ключей и явного выбора провайдера используется детерминированная имитация LLM (тот же цикл с инструментами):
 она понимает название мероприятия в кавычках и дату вида «на 20 ноября, 19:00», на остальное просит уточнить.
 Для OpenAI-совместимого API задайте `LLM_API_KEY`, при необходимости — `LLM_BASE_URL` и `LLM_MODEL`.
 
@@ -43,19 +43,21 @@ npm run lint     # oxlint
 В личном кабинете [developers.sber.ru](https://developers.sber.ru/) создайте проект GigaChat API.
 В разделе «Авторизационные данные» возьмите ключ в base64 для `GIGACHAT_AUTH_KEY`.
 
-Приоритет выбора: `GIGACHAT_AUTH_KEY` или `LLM_PROVIDER=gigachat` → GigaChat;
-иначе `LLM_API_KEY` → OpenAI-совместимый API; иначе имитация.
+Непустой `LLM_PROVIDER` выбирает ровно указанный провайдер; неизвестное значение или отсутствие
+ключа для выбранного GigaChat/OpenAI останавливает запуск с ошибкой. Без явного выбора:
+`GIGACHAT_AUTH_KEY` → GigaChat, иначе `LLM_API_KEY` → OpenAI-совместимый API, иначе имитация.
 
 Сертификаты НУЦ Минцифры лежат в `certs/russian_trusted_root_ca.cer` и `certs/russian_trusted_sub_ca.cer`.
 Источники: [корневой сертификат](https://gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer),
 [промежуточный сертификат](https://gu-st.ru/content/Other/doc/russian_trusted_sub_ca.cer),
 [информация об установке](https://www.gosuslugi.ru/crt).
+Срок действия сертификата sub CA — до 06.03.2027.
 Клиент добавляет их к стандартным доверенным сертификатам Node при первом HTTPS-запросе; проверка TLS включена.
 
 Запуск:
 
 ```sh
-GIGACHAT_AUTH_KEY=… npm run api
+read -s GIGACHAT_AUTH_KEY; export GIGACHAT_AUTH_KEY; npm run api
 ```
 
 ## Как это устроено
@@ -218,7 +220,7 @@ GigaChat получает только первый вызов инструме�
 - В шапке рассылки и в окне подтверждения дата события подписана «Дата в афише сейчас: …»: это текущая дата в афише, новая дата указана в письме.
 - Если нажать «Сбросить данные» ровно в паузу между письмами, в `outbox` может остаться одно письмо удалённой рассылки; в интерфейсе оно не видно (демо-ограничение).
 - LLM получает только количество получателей, не адреса.
-- Реализованы OpenAI-совместимый провайдер (`server/llm/openai.ts`) и GigaChat (`server/llm/gigachat.ts`), таймаут 30 с.
+- Реализованы OpenAI-совместимый провайдер (`server/llm/openai.ts`) и GigaChat (`server/llm/gigachat.ts`), таймаут 30 с на каждый запрос (OAuth и chat отдельно).
   GigaChat проверяется на локальном HTTP-сервере: OAuth, кеш токена, инструменты и ошибки. Внешние API в тестах не вызываются.
 - Тест 1: число детей на одного взрослого не ограничено (в задании нет); возраст — целое от 0 до 120; имя до 60 символов;
   одинаковые имена допустимы (тёзки); email проверяется шаблоном и ограничен 254 символами. Мок проверяет только места,

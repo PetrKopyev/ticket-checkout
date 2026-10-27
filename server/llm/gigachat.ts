@@ -23,13 +23,15 @@ type GigachatResponse = {
   } }[]
 }
 
-const parseArguments = (value: unknown): Record<string, unknown> => {
+const parseArguments = (value: unknown, history = false): Record<string, unknown> => {
   try {
     const args = typeof value === 'string' ? JSON.parse(value) : value
     if (args && typeof args === 'object' && !Array.isArray(args)) return args
   } catch {
+    if (history) return {}
     throw new Error('GigaChat: аргументы функции должны быть объектом JSON')
   }
+  if (history) return {}
   throw new Error('GigaChat: аргументы функции должны быть объектом JSON')
 }
 
@@ -48,7 +50,7 @@ const toGigachat = (messages: ChatMessage[]) => {
       return [{
         role: 'assistant',
         content: '',
-        function_call: { name: call.name, arguments: parseArguments(call.arguments) },
+        function_call: { name: call.name, arguments: parseArguments(call.arguments, true) },
       }]
     }
     return [{ role: message.role, content: message.content }]
@@ -76,8 +78,8 @@ export const createGigachatLlm = ({
           readFileSync(new URL('../../certs/russian_trusted_root_ca.cer', import.meta.url), 'utf8'),
           readFileSync(new URL('../../certs/russian_trusted_sub_ca.cer', import.meta.url), 'utf8'),
         ]
-      } catch {
-        throw new Error('Не удалось загрузить сертификаты GigaChat')
+      } catch (error) {
+        throw new Error('Не удалось загрузить сертификаты GigaChat', { cause: error })
       }
     }
     return certificates
@@ -86,9 +88,9 @@ export const createGigachatLlm = ({
   const post = <T>(url: string, headers: Record<string, string>, body: string): Promise<T> =>
     new Promise((resolve, reject) => {
       const signal = AbortSignal.timeout(30_000)
-      const fail = () => reject(new Error(signal.aborted
+      const fail = (error: unknown) => reject(new Error(signal.aborted
         ? 'GigaChat: время ожидания запроса истекло'
-        : 'Не удалось выполнить запрос к GigaChat'))
+        : 'Не удалось выполнить запрос к GigaChat', { cause: error }))
       try {
         const target = new URL(url)
         if (target.protocol !== 'http:' && target.protocol !== 'https:') {
@@ -104,13 +106,24 @@ export const createGigachatLlm = ({
           const status = response.statusCode ?? 0
           response.on('error', fail)
           if (status < 200 || status >= 300) {
-            response.resume()
-            reject(new Error(`GigaChat ответил ${status}`))
+            reject(Object.assign(new Error(`GigaChat ответил ${status}`), { status }))
+            response.destroy()
+            req.destroy()
             return
           }
           response.setEncoding('utf8')
           let data = ''
-          response.on('data', (chunk: string) => { data += chunk })
+          let size = 0
+          response.on('data', (chunk: string) => {
+            size += Buffer.byteLength(chunk)
+            if (size > 1024 * 1024) {
+              reject(new Error('GigaChat: ответ слишком большой'))
+              response.destroy()
+              req.destroy()
+              return
+            }
+            data += chunk
+          })
           response.on('end', () => {
             try {
               resolve(JSON.parse(data) as T)
@@ -121,8 +134,12 @@ export const createGigachatLlm = ({
         })
         req.on('error', fail)
         req.end(body)
-      } catch {
-        fail()
+      } catch (error) {
+        if (error instanceof Error && ['Не удалось загрузить сертификаты GigaChat', 'Неподдерживаемый протокол GigaChat'].includes(error.message)) {
+          reject(error)
+        } else {
+          fail(error)
+        }
       }
     })
 
@@ -141,7 +158,7 @@ export const createGigachatLlm = ({
         if (typeof result.expires_at !== 'number' || !Number.isFinite(result.expires_at)) {
           throw new Error('GigaChat: в ответе OAuth нет корректного expires_at')
         }
-        token = result
+        token = { ...result, expires_at: result.expires_at < 1e12 ? result.expires_at * 1000 : result.expires_at }
         return token.access_token
       }).finally(() => { tokenPromise = undefined })
     }
@@ -162,7 +179,10 @@ export const createGigachatLlm = ({
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
-      }, body)
+      }, body).catch((error: unknown) => {
+        if (error instanceof Error && 'status' in error && error.status === 401) token = undefined
+        throw error
+      })
       const message = result?.choices?.[0]?.message
       if (!message || (message.content != null && typeof message.content !== 'string')) {
         throw new Error('GigaChat: в ответе нет корректного choices[0].message')
