@@ -2,7 +2,16 @@ import type { ChatMessage, LlmClient, LlmReply } from './types.ts'
 
 type EventInfo = { id: string; title: string; startsAt: string; place: string }
 
-const DATE_RE = /на\s+(\d{1,2}\s+[а-яё]+),?\s+(\d{1,2}:\d{2})/i
+const DATE_RE = /на\s+(\d+\s+[а-яё]+),?\s+(\d+:\d+)/i
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+const DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+const validDate = (date: RegExpMatchArray) => {
+  const [day, month] = date[1].toLowerCase().split(/\s+/)
+  const [hours, minutes] = date[2].split(':').map(Number)
+  return Number(day) >= 1 && Number(day) <= DAYS[MONTHS.indexOf(month)]
+    && /^\d{2}:\d{2}$/.test(date[2]) && hours <= 23 && minutes <= 59
+}
 
 const call = (name: string, args: object): LlmReply => ({
   content: null,
@@ -11,13 +20,13 @@ const call = (name: string, args: object): LlmReply => ({
 
 const say = (content: string): LlmReply => ({ content, toolCalls: [] })
 
-const titleWords = (title: string) =>
-  title.toLowerCase().replace(/["«»]/g, ' ').split(/\s+/).filter((word) => word.length > 4)
+const quotedTitles = (text: string) => [...text.matchAll(/["“”„«»'‘’]([^"“”„«»'‘’]+)["“”„«»'‘’]/g)]
+  .map((match) => match[1])
 
 const mentions = (text: string, event: EventInfo) => {
   const lower = text.toLowerCase()
-  return lower.includes(event.title.toLowerCase())
-    || titleWords(event.title).some((word) => lower.includes(word.slice(0, -1)))
+  return quotedTitles(event.title).some((title) => title.toLowerCase().split(/\s+/)
+    .every((word) => lower.includes(word.length > 1 ? word.slice(0, -1) : word)))
 }
 
 const letter = (event: EventInfo, text: string) => {
@@ -50,9 +59,17 @@ export const createFakeLlm = (): LlmClient => ({
     }
     const events = result('list_events') as EventInfo[] | undefined
     if (!events) return call('list_events', {})
+    const unknown = quotedTitles(text).find((title) => !events.some((item) => mentions(title, item)))
+    if (unknown) {
+      return say(`Не нашёл такого мероприятия: «${unknown}». Доступны: ${events.map((item) => item.title).join(', ')}.`)
+    }
     const event = events.find((item) => mentions(text, item))
     if (!event) {
       return say(`Не понял, о каком мероприятии речь. Уточните, пожалуйста: ${events.map((item) => item.title).join(', ')}.`)
+    }
+    const date = text.match(DATE_RE)
+    if (date && !validDate(date)) {
+      return say(`Не понял дату переноса: «${date[1]}, ${date[2]}». Напишите, например: «на 20 ноября, 19:00»`)
     }
     const recipients = result('list_recipients') as { count: number } | undefined
     if (!recipients) return call('list_recipients', { event_id: event.id })

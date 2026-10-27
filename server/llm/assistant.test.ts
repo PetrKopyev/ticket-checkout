@@ -21,7 +21,7 @@ describe('assistant', () => {
     const { reply, campaignId } = await sendAssistantMessage(
       db,
       createFakeLlm(),
-      'Перенеси мастер-класс по керамике на 20 ноября, 19:00 и напиши покупателям',
+      'Перенеси мастер-класс "Керамика" на 20 ноября, 19:00 и напиши покупателям',
     )
     const campaign = getCampaign(db, campaignId as number)
     const emails = selectRecipients(db, 'ceramics')
@@ -34,7 +34,7 @@ describe('assistant', () => {
   })
 
   it('пишет вызовы инструментов в историю, а наружу отдаёт только реплики', async () => {
-    await sendAssistantMessage(db, createFakeLlm(), 'Лекция про шрифт переносится на 27 ноября, 18:30')
+    await sendAssistantMessage(db, createFakeLlm(), 'Перенеси лекцию "История шрифта" на 27 ноября, 18:30')
     const roles = (db.prepare('SELECT role FROM chat_messages').all() as { role: string }[]).map((row) => row.role)
     expect(roles.filter((role) => role === 'tool')).toHaveLength(3)
     expect(getHistory(db).map((message) => message.role)).toEqual(['user', 'assistant'])
@@ -47,15 +47,94 @@ describe('assistant', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
   })
 
+  it('понимает типографские кавычки и название без кавычек', async () => {
+    const phrases = [
+      'Переносим мастер-класс “Керамика” на 20 ноября, 19:00. Подготовь уведомление покупателям',
+      'Переносим мастер-класс „Керамика“ на 20 ноября, 19:00',
+      'Переносим мастер-класс Керамика на 20 ноября, 19:00',
+      'перенос керамики на 20 ноября, 19:00',
+    ]
+    for (const phrase of phrases) {
+      const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), phrase)
+      const campaign = getCampaign(db, campaignId as number)
+      expect(campaign?.eventId).toBe('ceramics')
+      expect(campaign?.total).toBe(6)
+      expect(campaign?.body).toContain('20 ноября, 19:00')
+    }
+  })
+
+  it('не находит мероприятие по общему слову и отказывает на неизвестное в любых кавычках', async () => {
+    const vague = await sendAssistantMessage(db, createFakeLlm(), 'Переносим мастер-класс на 20 ноября, 19:00')
+    expect(vague.reply).toContain('Уточните')
+    for (const phrase of ['Переносим мастер-класс “Мяу” на 20 ноября, 19:00', 'Переносим мастер-класс "Мяу" на 20 ноября, 19:00']) {
+      const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), phrase)
+      expect(campaignId).toBeNull()
+      expect(reply).toContain('Не нашёл такого мероприятия: «Мяу»')
+    }
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+  })
+
+  it('сообщает о неизвестном названии в кавычках', async () => {
+    const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс «Мяу»')
+    expect(campaignId).toBeNull()
+    expect(reply).toContain('Не нашёл такого мероприятия: «Мяу»')
+    expect(reply).toContain('Мастер-класс "Керамика"')
+    expect(reply).toContain('Лекция "История шрифта"')
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+  })
+
+  it.each([
+    ['мастер-класс "Керамике"', 'ceramics'],
+    ['лекцию "Истории шрифта"', 'fonts'],
+    ['мастер-класс «КЕРАМИКА»', 'ceramics'],
+  ])('находит мероприятие в просьбе: %s', async (title, eventId) => {
+    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), `Перенеси ${title} на 20 ноября, 19:00`)
+    expect(getCampaign(db, campaignId as number)?.eventId).toBe(eventId)
+  })
+
+  it.each(['мастер-класс', 'лекцию'])('не выбирает мероприятие по общим словам: %s', async (title) => {
+    const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), `Перенеси ${title}`)
+    expect(campaignId).toBeNull()
+    expect(reply).toContain('Не понял, о каком мероприятии')
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+  })
+
+  it.each([
+    '32 ноября, 25:00',
+    '31 ноября, 10:00',
+    '20 ноября, 24:00',
+    '20 ноября, 19:60',
+    '0 ноября, 10:00',
+    '20 ноябрю, 10:00',
+    '30 февраля, 10:00',
+  ])('отказывает при неверной дате: %s', async (date) => {
+    const { reply, campaignId } = await sendAssistantMessage(db, createFakeLlm(), `Перенеси мастер-класс "Керамика" на ${date}`)
+    expect(campaignId).toBeNull()
+    expect(reply).toBe(`Не понял дату переноса: «${date}». Напишите, например: «на 20 ноября, 19:00»`)
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+    const tools = db.prepare("SELECT content FROM chat_messages WHERE role = 'assistant' AND tool_calls IS NOT NULL").all() as { content: string }[]
+    expect(tools).toHaveLength(1)
+  })
+
+  it.each(['29 февраля, 00:00', '31 декабря, 23:59'])('принимает допустимую дату: %s', async (date) => {
+    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), `Перенеси мастер-класс "Керамика" на ${date}`)
+    expect(getCampaign(db, campaignId as number)?.body).toContain(date)
+  })
+
+  it('готовит письмо без даты', async () => {
+    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Напиши покупателям мастер-класса "Керамика"')
+    expect(getCampaign(db, campaignId as number)?.subject).toBe('Мастер-класс "Керамика": важная информация')
+  })
+
   it('ошибка инструмента попадает в историю и в ответ, следующий запрос работает', async () => {
     db.exec("CREATE TRIGGER broken BEFORE INSERT ON campaigns BEGIN SELECT RAISE(ABORT, 'диск полон'); END")
-    const failed = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс по керамике на 20 ноября, 19:00')
+    const failed = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс "Керамика" на 20 ноября, 19:00')
     expect(failed).toEqual({ reply: 'Не получилось создать черновик: Инструмент завершился с ошибкой', campaignId: null })
     const tools = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool'").all() as { content: string }[]
     expect(JSON.parse(tools[2].content)).toEqual({ error: 'Инструмент завершился с ошибкой' })
 
     db.exec('DROP TRIGGER broken')
-    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс по керамике на 20 ноября, 19:00')
+    const { campaignId } = await sendAssistantMessage(db, createFakeLlm(), 'Перенеси мастер-класс "Керамика" на 20 ноября, 19:00')
     expect(getCampaign(db, campaignId as number)?.total).toBe(6)
   })
 
@@ -98,7 +177,7 @@ describe('assistant', () => {
         return fake.chat(messages, tools)
       },
     }
-    const error = await sendAssistantMessage(db, flaky, 'Перенеси мастер-класс по керамике на 20 ноября, 19:00')
+    const error = await sendAssistantMessage(db, flaky, 'Перенеси мастер-класс "Керамика" на 20 ноября, 19:00')
       .catch((error: unknown) => error)
     const { id } = db.prepare('SELECT id FROM campaigns').get() as { id: number }
     expect(error).toBeInstanceOf(LlmFailedError)
