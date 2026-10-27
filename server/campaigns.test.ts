@@ -18,11 +18,21 @@ import {
   updateDraft,
 } from './campaigns.ts'
 import { openDb } from './db.ts'
+import { runTool } from './llm/tools.ts'
 import { MAILER_DOWN_ERROR, MailerDownError, createDbMailer, isMailerDown, listOutbox, mailKey, setMailerDown, type Mail, type Mailer } from './mailer.ts'
 import { resetDemo, seed } from './seed.ts'
 
 const DRAFT = { eventId: 'ceramics', subject: 'Перенос', body: 'Мастер-класс переносится' }
 const CERAMICS_COUNT = 6
+
+const shownLetter = (db: DatabaseSync, id: number) => {
+  const campaign = getCampaign(db, id)!
+  return {
+    subject: campaign.subject,
+    body: campaign.body,
+    excluded: campaign.recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email),
+  }
+}
 
 let db: DatabaseSync
 
@@ -39,7 +49,7 @@ const outboxEmails = () => listOutbox(db).map((mail) => mail.email).sort()
 
 const confirmed = () => {
   const { id } = createDraft(db, DRAFT)
-  confirmCampaign(db, id)
+  confirmCampaign(db, id, shownLetter(db, id))
   return id
 }
 
@@ -82,6 +92,27 @@ beforeEach(() => {
 })
 
 describe('черновик', () => {
+  it('неизвестный send_campaign возвращает ошибку и не создаёт рассылку', () => {
+    expect(runTool(db, 'send_campaign', JSON.stringify({ event_id: 'ceramics', subject: 'a', body: 'b' })))
+      .toEqual({ error: 'Неизвестный инструмент send_campaign' })
+    expect(count('campaigns')).toBe(0)
+  })
+
+  it.each(Array.from({ length: 32 }, (_, code) => String.fromCharCode(code)))('управляющий символ %j запрещён в теме', (char) => {
+    expect(() => createDraft(db, { ...DRAFT, subject: `Тема${char}письма` }))
+      .toThrow(new InvalidLetterError('Тема должна быть одной строкой'))
+    const { id } = createDraft(db, DRAFT)
+    expect(() => updateDraft(db, id, { subject: `Тема${char}письма` }))
+      .toThrow(new InvalidLetterError('Тема должна быть одной строкой'))
+    expect(getCampaign(db, id)?.subject).toBe(DRAFT.subject)
+  })
+
+  it('PATCH только с body сохраняет тему и разрешает переводы строк в тексте', () => {
+    const { id } = createDraft(db, DRAFT)
+    expect(updateDraft(db, id, { body: 'Первая строка\nВторая строка' }))
+      .toMatchObject({ subject: DRAFT.subject, body: 'Первая строка\nВторая строка' })
+  })
+
   it('createDraft строит доставки по получателям', () => {
     const campaign = createDraft(db, DRAFT)
     expect(campaign).toMatchObject({
@@ -100,7 +131,7 @@ describe('черновик', () => {
     const draft = updateDraft(db, id, { subject: 'Новая тема', excluded: [' Anna@Example.com', 'boris@example.com'] })
     expect(draft).toMatchObject({ subject: 'Новая тема', body: DRAFT.body, total: CERAMICS_COUNT - 2 })
 
-    confirmCampaign(db, id)
+    confirmCampaign(db, id, shownLetter(db, id))
     const campaign = await sendPending(db, createDbMailer(db), id)
     expect(campaign).toMatchObject({ status: 'completed', total: CERAMICS_COUNT - 2, sent: CERAMICS_COUNT - 2 })
     expect(outboxEmails()).not.toContain('anna@example.com')
@@ -148,7 +179,7 @@ describe('черновик', () => {
 
   it('несуществующая рассылка — CampaignNotFoundError, а не null', () => {
     expect(() => updateDraft(db, 999, { subject: 'Тема' })).toThrow(CampaignNotFoundError)
-    expect(() => confirmCampaign(db, 999)).toThrow(CampaignNotFoundError)
+    expect(() => confirmCampaign(db, 999, { ...DRAFT, excluded: [] })).toThrow(CampaignNotFoundError)
     expect(() => resumeCampaign(db, 999)).toThrow(CampaignNotFoundError)
   })
 
@@ -159,9 +190,35 @@ describe('черновик', () => {
 })
 
 describe('подтверждение и отправка', () => {
+  it.each([
+    { subject: 'Другая тема' },
+    { body: 'Другой текст' },
+    { excluded: ['anna@example.com'] },
+  ])('изменённое поле %j не подтверждается и ничего не отправляет', async (patch) => {
+    const { id } = createDraft(db, DRAFT)
+    const shown = shownLetter(db, id)
+    updateDraft(db, id, patch)
+    expect(() => confirmCampaign(db, id, shown))
+      .toThrow(new CampaignStateError('Рассылка изменилась в другой вкладке. Обновите страницу'))
+    await sendPending(db, createDbMailer(db), id)
+    expect(getCampaign(db, id)?.status).toBe('draft')
+    expect(listOutbox(db)).toHaveLength(0)
+  })
+
+  it('сравнивает исключения как множество нормализованных адресов', async () => {
+    const { id } = createDraft(db, DRAFT)
+    updateDraft(db, id, { excluded: ['anna@example.com', 'boris@example.com'] })
+    const shown = { ...DRAFT, excluded: [' Boris@Example.com ', 'ANNA@example.com', 'anna@example.com'] }
+    expect(confirmCampaign(db, id, shown).started).toBe(true)
+    await sendPending(db, createDbMailer(db), id)
+    expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 2)
+    expect(confirmCampaign(db, id, { subject: 'Другая', body: '', excluded: [] }).started).toBe(false)
+    expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 2)
+  })
+
   it('отправляет всем и завершает кампанию', async () => {
     const { id } = createDraft(db, DRAFT)
-    const { started } = confirmCampaign(db, id)
+    const { started } = confirmCampaign(db, id, shownLetter(db, id))
     expect(started).toBe(true)
 
     const campaign = await sendPending(db, createDbMailer(db), id)
@@ -175,7 +232,7 @@ describe('подтверждение и отправка', () => {
     const mailer = createDbMailer(db)
     await sendPending(db, mailer, id)
 
-    const again = confirmCampaign(db, id)
+    const again = confirmCampaign(db, id, shownLetter(db, id))
     expect(again.started).toBe(false)
     expect(again.campaign.status).toBe('completed')
     await sendPending(db, mailer, id)
@@ -194,14 +251,14 @@ describe('подтверждение и отправка', () => {
   it('с пустой темой или текстом подтвердить нельзя', () => {
     const { id } = createDraft(db, DRAFT)
     db.prepare("UPDATE campaigns SET body = ' ' WHERE id = ?").run(id)
-    expect(() => confirmCampaign(db, id)).toThrow(CampaignStateError)
+    expect(() => confirmCampaign(db, id, shownLetter(db, id))).toThrow(CampaignStateError)
     expect(getCampaign(db, id)?.status).toBe('draft')
   })
 
   it('без получателей подтвердить нельзя', () => {
     const { id, recipients } = createDraft(db, DRAFT)
     updateDraft(db, id, { excluded: recipients.map((recipient) => recipient.email) })
-    expect(() => confirmCampaign(db, id)).toThrow('Нет получателей')
+    expect(() => confirmCampaign(db, id, shownLetter(db, id))).toThrow('Нет получателей')
     expect(getCampaign(db, id)?.status).toBe('draft')
   })
 
@@ -215,7 +272,7 @@ describe('подтверждение и отправка', () => {
   it.each(['draft', 'completed'] as const)('sendPending в %s не вызывает мейлер и не меняет рассылку', async (status) => {
     const { id } = createDraft(db, DRAFT)
     if (status === 'completed') {
-      confirmCampaign(db, id)
+      confirmCampaign(db, id, shownLetter(db, id))
       await sendPending(db, createDbMailer(db), id)
     }
     const campaign = getCampaign(db, id)
@@ -241,7 +298,7 @@ describe('подтверждение и отправка', () => {
     expect(counting.calls).toBe(0)
   })
 
-  it('сброс демо посреди отправки останавливает цикл без писем-сирот', async () => {
+  it('сброс демо после записи второго письма очищает данные и останавливает цикл', async () => {
     const id = confirmed()
     const mailer = createDbMailer(db)
     let calls = 0
@@ -412,7 +469,7 @@ describe('дослать исключённому', () => {
   const sentWithout = async (excluded: string[], mailer: Mailer = createDbMailer(db)) => {
     const { id } = createDraft(db, DRAFT)
     updateDraft(db, id, { excluded })
-    confirmCampaign(db, id)
+    confirmCampaign(db, id, shownLetter(db, id))
     await sendPending(db, mailer, id)
     return id
   }
@@ -431,6 +488,15 @@ describe('дослать исключённому', () => {
     expect(counting.calls).toBe(1)
     expect(outboxEmails()).toEqual(getCampaign(db, id)?.recipients.map((item) => item.email))
     expect(recipient(id, 'anna@example.com')).toMatchObject({ status: 'sent', excluded: false, attempts: 1 })
+  })
+
+  it('ошибка включения адреса откатывает статус рассылки', async () => {
+    const id = await sentWithout(['anna@example.com'])
+    const campaign = getCampaign(db, id)
+    db.exec("CREATE TRIGGER broken BEFORE UPDATE ON deliveries BEGIN SELECT RAISE(ABORT, 'диск полон'); END")
+    expect(() => includeRecipient(db, id, 'anna@example.com')).toThrow('диск полон')
+    expect(getCampaign(db, id)).toEqual(campaign)
+    expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 1)
   })
 
   it('после partial сначала resume, затем досылка без дублей', async () => {
@@ -481,7 +547,7 @@ describe('дослать исключённому', () => {
 
     const { id: sendingId } = createDraft(db, DRAFT)
     updateDraft(db, sendingId, { excluded: ['anna@example.com'] })
-    confirmCampaign(db, sendingId)
+    confirmCampaign(db, sendingId, shownLetter(db, sendingId))
     expect(() => includeRecipient(db, sendingId, 'anna@example.com')).toThrow('Дождитесь завершения отправки')
     expect(recipient(sendingId, 'anna@example.com')?.excluded).toBe(true)
   })
@@ -585,7 +651,7 @@ describe('рестарт', () => {
     const first = openDb(path)
     seed(first)
     const { id } = createDraft(first, DRAFT)
-    confirmCampaign(first, id)
+    confirmCampaign(first, id, shownLetter(first, id))
     await createDbMailer(first).send({
       campaignId: id, email: 'anna@example.com', subject: 'Тема', body: 'Текст', idempotencyKey: mailKey(id, 'anna@example.com'),
     })
@@ -603,7 +669,7 @@ describe('рестарт', () => {
     const first = openDb(path)
     seed(first)
     const { id } = createDraft(first, DRAFT)
-    confirmCampaign(first, id)
+    confirmCampaign(first, id, shownLetter(first, id))
     setMailerDown(first, true)
     first.close()
 
@@ -623,12 +689,12 @@ describe('рестарт', () => {
     const first = openDb(path)
     seed(first)
     const { id: partialId } = createDraft(first, DRAFT)
-    confirmCampaign(first, partialId)
+    confirmCampaign(first, partialId, shownLetter(first, partialId))
     setMailerDown(first, true)
     await sendPending(first, createDbMailer(first), partialId)
     setMailerDown(first, false)
     const { id: completedId } = createDraft(first, DRAFT)
-    confirmCampaign(first, completedId)
+    confirmCampaign(first, completedId, shownLetter(first, completedId))
     await sendPending(first, createDbMailer(first), completedId)
     const campaigns = [partialId, completedId].map((id) => getCampaign(first, id))
     const outbox = listOutbox(first)
@@ -647,7 +713,7 @@ describe('рестарт', () => {
     seed(first)
     const { id } = createDraft(first, DRAFT)
     updateDraft(first, id, { excluded: ['anna@example.com'] })
-    confirmCampaign(first, id)
+    confirmCampaign(first, id, shownLetter(first, id))
     await sendPending(first, createDbMailer(first), id)
     expect(getCampaign(first, id)?.status).toBe('completed')
     const outbox = listOutbox(first)
@@ -674,7 +740,7 @@ describe('рестарт', () => {
     seed(first)
     const { id } = createDraft(first, DRAFT)
     updateDraft(first, id, { excluded: ['anna@example.com'] })
-    confirmCampaign(first, id)
+    confirmCampaign(first, id, shownLetter(first, id))
     await sendPending(first, createDbMailer(first), id)
     includeRecipient(first, id, 'anna@example.com')
     await createDbMailer(first).send({

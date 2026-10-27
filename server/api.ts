@@ -158,7 +158,13 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     if (method === 'GET' && !action) return mustGetCampaign(db, id)
     if (method === 'PATCH' && !action) return updateDraft(db, id, parsePatch(await readBody(req)))
     if (method === 'POST' && action === '/confirm') {
-      const { campaign, started } = confirmCampaign(db, id)
+      const shown = parsePatch(await readBody(req))
+      if (shown.subject === undefined || shown.body === undefined || shown.excluded === undefined) {
+        throw new HttpError(400, 'Нужны тема, текст и список исключённых адресов')
+      }
+      const { campaign, started } = confirmCampaign(db, id, {
+        subject: shown.subject, body: shown.body, excluded: shown.excluded,
+      })
       if (started) runInBackground(sendPending(db, mailer, id))
       return campaign
     }
@@ -180,7 +186,7 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
   return (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     const path = parsePath(req.url)
     if (path === null) return send(res, 400, { error: 'Неверный адрес' })
-    if (!path.startsWith('/api/')) return next()
+    if (path !== '/api' && !path.startsWith('/api/')) return next()
     route(req, path)
       .then((data) => send(res, 200, data))
       .catch((error) => {

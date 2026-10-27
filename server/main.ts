@@ -44,7 +44,8 @@ const serveStatic = (req: IncomingMessage, res: ServerResponse) => {
 
 createServer((req, res) => {
   if (!isLocalHost(req.headers.host, PORT)) {
-    res.writeHead(403).end('Forbidden')
+    res.writeHead(403, { ...SECURITY_HEADERS, 'Content-Type': 'application/json; charset=utf-8' })
+      .end(JSON.stringify({ error: 'Недопустимый Host' }))
     return
   }
   api(req, res, () => serveStatic(req, res))

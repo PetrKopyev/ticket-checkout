@@ -74,7 +74,7 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
         >
           Отмена
         </button>
-        <button type="button" disabled={isBusy} onClick={confirm} className={primaryButtonClass}>
+        <button type="button" disabled={isBusy} onClick={(event) => event.detail <= 1 && confirm()} className={primaryButtonClass}>
           Отправить {recipientsCount} {plural(recipientsCount, 'письмо', 'письма', 'писем')}
         </button>
       </div>

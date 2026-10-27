@@ -125,7 +125,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
 
   const send = () => run(async () => {
     if (isDirty) await updateCampaign(campaign.id, { subject, body, excluded })
-    return confirmCampaign(campaign.id)
+    return confirmCampaign(campaign.id, { subject, body, excluded })
   })
 
   const closeIncludeDialog = (isDone: boolean) => {

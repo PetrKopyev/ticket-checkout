@@ -15,6 +15,7 @@ export type Recipient = {
   email: string
   status: 'pending' | 'sent' | 'failed'
   error: string | null
+  attempts: number
   excluded: boolean
 }
 
@@ -77,7 +78,8 @@ export const getCampaign = (id: number) => request<Campaign>(`/campaigns/${id}`)
 export const updateCampaign = (id: number, patch: CampaignPatch) =>
   request<Campaign>(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
 
-export const confirmCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/confirm`)
+export const confirmCampaign = (id: number, shown: Required<CampaignPatch>) =>
+  post<Campaign>(`/campaigns/${id}/confirm`, shown)
 
 export const resumeCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/resume`)
 

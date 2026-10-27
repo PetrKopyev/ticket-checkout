@@ -31,6 +31,17 @@ const createDraft = async () => {
   return data.campaignId as number
 }
 
+const shownLetter = async (id: number) => {
+  const { data } = await request(`/api/campaigns/${id}`)
+  return {
+    subject: data.subject as string,
+    body: data.body as string,
+    excluded: data.recipients.filter((recipient: Json) => recipient.excluded).map((recipient: Json) => recipient.email) as string[],
+  }
+}
+
+const confirm = async (id: number) => request(`/api/campaigns/${id}/confirm`, 'POST', await shownLetter(id))
+
 const waitFor = (id: number, status: string) =>
   vi.waitFor(async (): Promise<Json> => {
     const { data } = await request(`/api/campaigns/${id}`)
@@ -78,6 +89,64 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it.each([
+    { subject: 'Другая тема' },
+    { body: 'Другой текст' },
+    { excluded: ['anna@example.com'] },
+  ])('confirm при расхождении %j возвращает 409 и ничего не отправляет', async (patch) => {
+    const id = await createDraft()
+    const shown = await shownLetter(id)
+    await request(`/api/campaigns/${id}`, 'PATCH', patch)
+    expect(await request(`/api/campaigns/${id}/confirm`, 'POST', shown)).toEqual({
+      status: 409, data: { error: 'Рассылка изменилась в другой вкладке. Обновите страницу' },
+    })
+    expect((await request(`/api/campaigns/${id}`)).data.status).toBe('draft')
+    expect(await outboxCount()).toBe(0)
+  })
+
+  it('confirm проверяет обязательные поля и их типы', async () => {
+    const id = await createDraft()
+    const shown = await shownLetter(id)
+    for (const body of [
+      {}, { body: shown.body, excluded: [] }, { subject: shown.subject, excluded: [] },
+      { subject: shown.subject, body: shown.body },
+      { ...shown, subject: 1 }, { ...shown, body: null },
+      { ...shown, excluded: 'anna@example.com' }, { ...shown, excluded: [1] }, [], [1],
+    ]) {
+      expect((await request(`/api/campaigns/${id}/confirm`, 'POST', body)).status).toBe(400)
+    }
+    expect(await outboxCount()).toBe(0)
+  })
+
+  it('повторный confirm с другими полями возвращает 200 и рассылку без повторной отправки', async () => {
+    const id = await createDraft()
+    expect((await confirm(id)).status).toBe(200)
+    const campaign = await waitFor(id, 'completed')
+    expect(await request(`/api/campaigns/${id}/confirm`, 'POST', { subject: 'Другая', body: '', excluded: [] }))
+      .toEqual({ status: 200, data: campaign })
+    expect(await outboxCount()).toBe(6)
+  })
+
+  it('PATCH только с body меняет текст и сохраняет тему', async () => {
+    const id = await createDraft()
+    const { subject } = await shownLetter(id)
+    expect(await request(`/api/campaigns/${id}`, 'PATCH', { body: 'Новый текст\nВторая строка' }))
+      .toMatchObject({ status: 200, data: { subject, body: 'Новый текст\nВторая строка' } })
+  })
+
+  it.each([{ body: [] }, { body: [1] }])('PATCH с массивом $body возвращает 400', async ({ body }) => {
+    const id = await createDraft()
+    expect((await request(`/api/campaigns/${id}`, 'PATCH', body)).status).toBe(400)
+  })
+
+  it('/apix передаётся next, /api возвращает JSON 404', async () => {
+    const handler = createApiHandler(db, createFakeLlm(), createDbMailer(db))
+    const next = vi.fn()
+    handler({ url: '/apix' } as Parameters<typeof handler>[0], {} as Parameters<typeof handler>[1], next)
+    expect(next).toHaveBeenCalledOnce()
+    expect(await request('/api')).toEqual({ status: 404, data: { error: 'Не найдено' } })
+  })
+
   it('отдаёт мероприятия', async () => {
     const { data } = await request('/api/events')
     expect(data.map((event: { id: string }) => event.id)).toEqual(['ceramics', 'fonts'])
@@ -101,10 +170,10 @@ describe('api', () => {
     expect(patched.data.total).toBe(5)
     expect(patched.data.subject).toBe('Перенос')
 
-    const confirmed = await request(`/api/campaigns/${id}/confirm`, 'POST')
+    const confirmed = await confirm(id)
     expect(confirmed.data.status).toBe('sending')
     await waitFor(id, 'completed')
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
 
     const { data } = await request('/api/outbox')
     expect(data).toHaveLength(5)
@@ -116,7 +185,7 @@ describe('api', () => {
     const id = await createDraft()
     await request('/api/demo/mailer', 'POST', { down: true })
     expect((await request('/api/demo')).data).toEqual({ mailerDown: true })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     const partial = await waitFor(id, 'partial')
     expect(partial).toMatchObject({ pending: 5, failed: 1 })
     expect(partial.recipients[0]).toMatchObject({ status: 'failed', error: 'Служба отправки недоступна' })
@@ -220,7 +289,7 @@ describe('api', () => {
   it('список рассылок: новые сверху, исключённые не считаются', async () => {
     const first = await createDraft()
     await request(`/api/campaigns/${first}`, 'PATCH', { excluded: ['anna@example.com'] })
-    await request(`/api/campaigns/${first}/confirm`, 'POST')
+    await confirm(first)
     await waitFor(first, 'completed')
     const second = await createDraft()
     const { data } = await request('/api/campaigns')
@@ -229,7 +298,7 @@ describe('api', () => {
 
   it('outbox: новые письма сверху', async () => {
     const id = await createDraft()
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     await waitFor(id, 'completed')
     const ids = (await request('/api/outbox')).data.map((mail: Json) => mail.id)
     expect(ids).toEqual([...ids].sort((a, b) => b - a))
@@ -237,7 +306,7 @@ describe('api', () => {
   })
 
   it('confirm и resume несуществующей рассылки — 404', async () => {
-    expect((await request('/api/campaigns/999/confirm', 'POST')).status).toBe(404)
+    expect((await request('/api/campaigns/999/confirm', 'POST', { subject: 'Тема', body: 'Текст', excluded: [] })).status).toBe(404)
     expect((await request('/api/campaigns/999/resume', 'POST')).status).toBe(404)
   })
 
@@ -254,7 +323,7 @@ describe('api', () => {
     const { data } = await request(`/api/campaigns/${id}`)
     const emails = data.recipients.map((recipient: { email: string }) => recipient.email)
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: emails })
-    expect(await request(`/api/campaigns/${id}/confirm`, 'POST')).toEqual({ status: 409, data: { error: 'Нет получателей' } })
+    expect(await confirm(id)).toEqual({ status: 409, data: { error: 'Нет получателей' } })
   })
 
   it('повторный confirm во время отправки не запускает вторую', async () => {
@@ -269,8 +338,8 @@ describe('api', () => {
       },
     })
     const id = await createDraft()
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
-    expect((await request(`/api/campaigns/${id}/confirm`, 'POST')).data.status).toBe('sending')
+    await confirm(id)
+    expect((await confirm(id)).data.status).toBe('sending')
     release.open()
     await waitFor(id, 'completed')
     expect(calls).toBe(6)
@@ -283,7 +352,7 @@ describe('api', () => {
     await listen(createFakeLlm(), { send: async (mail) => { calls++; await mailer.send(mail) } })
     const id = await createDraft()
     await request('/api/demo/mailer', 'POST', { down: true })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     await waitFor(id, 'partial')
     await request('/api/demo/mailer', 'POST', { down: false })
     calls = 0
@@ -298,7 +367,7 @@ describe('api', () => {
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com'] })
     const include = (body: object) => request(`/api/campaigns/${id}/include`, 'POST', body)
     expect(await include({ email: 'anna@example.com' })).toEqual({ status: 409, data: { error: 'Дослать можно после отправки рассылки' } })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     await waitFor(id, 'completed')
 
     const included = await include({ email: ' Anna@Example.com ' })
@@ -312,7 +381,7 @@ describe('api', () => {
   it('include при упавшей почте возвращает 200, в partial досылка запрещена', async () => {
     const id = await createDraft()
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     await waitFor(id, 'completed')
     await request('/api/demo/mailer', 'POST', { down: true })
 
@@ -347,7 +416,7 @@ describe('api', () => {
     expect((await include({ email: ['anna@example.com'] })).status).toBe(400)
     expect(await include({ email: 'gleb@example.com' }))
       .toMatchObject({ status: 409, data: { error: 'Дослать можно после отправки рассылки' } })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     await waitFor(id, 'completed')
     expect(await include({ email: 'gleb@example.com' })).toEqual({ status: 404, data: { error: 'Такого получателя нет в рассылке' } })
     expect((await request('/api/campaigns/999/include', 'POST', { email: 'anna@example.com' })).status).toBe(404)
@@ -371,7 +440,7 @@ describe('api', () => {
     })
     const id = await createDraft()
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
-    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await confirm(id)
     release.open()
     await waitFor(id, 'completed')
 

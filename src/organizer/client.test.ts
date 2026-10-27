@@ -24,10 +24,10 @@ describe('client', () => {
 
   it('отправляет JSON в POST', async () => {
     const fetch = mockFetch(Response.json({ id: 1 }))
-    await confirmCampaign(1)
+    await confirmCampaign(1, { subject: 'Перенос', body: 'Текст', excluded: ['anna@example.com'] })
     expect(fetch).toHaveBeenCalledWith('/api/campaigns/1/confirm', {
       method: 'POST',
-      body: '{}',
+      body: JSON.stringify({ subject: 'Перенос', body: 'Текст', excluded: ['anna@example.com'] }),
       headers: { 'Content-Type': 'application/json' },
     })
   })

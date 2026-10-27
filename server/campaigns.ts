@@ -53,6 +53,9 @@ const activeSends = new Set<number>()
 const now = () => new Date().toISOString()
 
 const checkLetter = ({ subject, body }: { subject?: string; body?: string }) => {
+  if (subject !== undefined && [...subject].some((char) => char.charCodeAt(0) < 0x20)) {
+    throw new InvalidLetterError('Тема должна быть одной строкой')
+  }
   if (subject !== undefined && !subject.trim()) throw new InvalidLetterError('Тема не может быть пустой')
   if (subject !== undefined && subject.length > MAX_SUBJECT) throw new InvalidLetterError(`Тема длиннее ${MAX_SUBJECT} символов`)
   if (body !== undefined && !body.trim()) throw new InvalidLetterError('Текст не может быть пустым')
@@ -140,8 +143,16 @@ export const updateDraft = (
   return mustGetCampaign(db, id)
 }
 
-export const confirmCampaign = (db: DatabaseSync, id: number) => {
+export const confirmCampaign = (db: DatabaseSync, id: number, shown: { subject: string; body: string; excluded: string[] }) => {
   const campaign = mustGetCampaign(db, id)
+  if (campaign.status === 'draft') {
+    const excluded = new Set(shown.excluded.map(normalizeEmail))
+    const savedExcluded = campaign.recipients.filter((recipient) => recipient.excluded)
+    if (shown.subject !== campaign.subject || shown.body !== campaign.body
+      || excluded.size !== savedExcluded.length || savedExcluded.some((recipient) => !excluded.has(recipient.email))) {
+      throw new CampaignStateError('Рассылка изменилась в другой вкладке. Обновите страницу')
+    }
+  }
   if (campaign.status === 'draft' && campaign.total === 0) throw new CampaignStateError('Нет получателей')
   if (campaign.status === 'draft' && !(campaign.subject.trim() && campaign.body.trim())) {
     throw new CampaignStateError('Пустая тема или текст письма')
@@ -221,9 +232,11 @@ export const includeRecipient = (db: DatabaseSync, id: number, email: string) =>
   const recipient = campaign.recipients.find((item) => item.email === normalized)
   if (!recipient) throw new CampaignNotFoundError('Такого получателя нет в рассылке')
   if (!recipient.excluded) throw new CampaignStateError('Получатель уже включён')
-  db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ?").run(id)
-  db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND email = ?")
-    .run(id, normalized)
+  transaction(db, () => {
+    db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ?").run(id)
+    db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND email = ?")
+      .run(id, normalized)
+  })
   return mustGetCampaign(db, id)
 }
 

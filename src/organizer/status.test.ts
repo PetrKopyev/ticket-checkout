@@ -3,7 +3,7 @@ import type { Campaign, CampaignStatus, Recipient } from './client'
 import { canInclude, eventDateLabel, firstError, isUnfinished, partialMessage, partialTitle, statusLabel, summarize } from './status'
 
 const recipient = (email: string, status: Recipient['status'], error: string | null = null, excluded = false): Recipient =>
-  ({ email, status, error, excluded })
+  ({ email, status, error, attempts: 0, excluded })
 
 const campaign = (recipients: Recipient[]): Campaign => ({
   id: 1,
