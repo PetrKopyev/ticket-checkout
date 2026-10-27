@@ -14,13 +14,15 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
   onReload: () => void
 }) => {
   const [items, setItems] = useState<OutboxItem[]>([])
+  const [total, setTotal] = useState(0)
   const [error, setError] = useState('')
 
   useEffect(() => {
     getOutbox().then(
       (outbox) => {
         setError('')
-        setItems(outbox)
+        setItems(outbox.items)
+        setTotal(outbox.total)
       },
       (reason: Error) => setError(reason.message),
     )
@@ -37,6 +39,7 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
         <button type="button" onClick={onReload} className={secondaryButtonClass}>Обновить</button>
       </div>
       <p className="mt-1 text-sm text-ink-muted">Демо-почтовый ящик: что ушло покупателям</p>
+      {total > items.length && <p className="text-sm text-ink-muted">Показаны последние {items.length} из {total}</p>}
       {error && <p role="alert" className={`${alertClass} mt-4`}>Не удалось загрузить письма: {error}</p>}
       {!error && groups.length === 0 && <p className="mt-4 text-ink-muted">Писем пока нет</p>}
       {groups.map(({ campaign, letters }) => (

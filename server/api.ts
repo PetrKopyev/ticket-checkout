@@ -19,7 +19,7 @@ import {
 } from './campaigns.ts'
 import { LlmFailedError, getHistory, sendAssistantMessage } from './llm/assistant.ts'
 import type { LlmClient } from './llm/types.ts'
-import { isMailerDown, listOutbox, setMailerDown, type Mailer } from './mailer.ts'
+import { isMailerDown, recentOutbox, setMailerDown, type Mailer } from './mailer.ts'
 import { createBigDemo, resetDemo } from './seed.ts'
 
 type EventRow = { id: string; title: string; starts_at: string; place: string }
@@ -160,7 +160,7 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     }
     if (method === 'GET' && path === '/api/limits') return { subject: MAX_SUBJECT, body: MAX_LETTER_BODY }
     if (method === 'GET' && path === '/api/campaigns') return listCampaigns(db)
-    if (method === 'GET' && path === '/api/outbox') return listOutbox(db)
+    if (method === 'GET' && path === '/api/outbox') return recentOutbox(db)
     if (method === 'GET' && path === '/api/demo') return { mailerDown: isMailerDown(db) }
     if (method === 'POST' && path === '/api/demo/mailer') {
       const { down } = await readBody(req)

@@ -44,6 +44,8 @@ export type CampaignPatch = { subject?: string; body?: string; excluded?: string
 
 export type OutboxItem = { id: number; campaignId: number; email: string; subject: string; sentAt: string }
 
+export type OutboxPage = { items: OutboxItem[]; total: number }
+
 export type Limits = { subject: number; body: number }
 
 export class ApiError extends Error {
@@ -103,7 +105,7 @@ export const includeRecipient = (id: number, email: string) =>
 
 export const includeAll = (id: number) => post<Campaign>(`/campaigns/${id}/include-all`)
 
-export const getOutbox = () => request<OutboxItem[]>('/outbox')
+export const getOutbox = () => request<OutboxPage>('/outbox')
 
 export const getDemo = () => request<{ mailerDown: boolean }>('/demo')
 
