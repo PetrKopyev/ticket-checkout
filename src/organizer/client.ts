@@ -81,6 +81,8 @@ export const confirmCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/
 
 export const resumeCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/resume`)
 
+export const includeRecipient = (id: number, email: string) => post<Campaign>(`/campaigns/${id}/include`, { email })
+
 export const getOutbox = () => request<OutboxItem[]>('/outbox')
 
 export const getDemo = () => request<{ mailerDown: boolean }>('/demo')

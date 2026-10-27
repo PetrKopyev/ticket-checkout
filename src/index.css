@@ -19,6 +19,10 @@
   --color-brand-mid: #6d4cab;
   --color-brand-light: #7c59c2;
   --color-shadow: #0000005c;
+  --color-paper: #f7f5fa;
+  --color-paper-ink: #1c1a21;
+  --color-paper-muted: #575361;
+  --color-paper-line: #dcd7e3;
   --font-sans: 'Manrope Variable', sans-serif;
   --radius-control: 18px;
   --background-image-brand-gradient: linear-gradient(
@@ -34,6 +38,11 @@
 }
 
 @layer base {
+  html {
+    /* Место под полосу прокрутки всегда занято: вкладки не сдвигаются при переходе между страницами. */
+    scrollbar-gutter: stable;
+  }
+
   @media (width < 64rem) {
     html {
       /* Чтобы поле в фокусе не пряталось под липким баром. */

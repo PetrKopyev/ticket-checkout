@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Campaign, CampaignStatus, Recipient } from './client'
-import { eventDateLabel, firstError, isUnfinished, partialMessage, partialTitle, statusLabel, summarize } from './status'
+import { canInclude, eventDateLabel, firstError, isUnfinished, partialMessage, partialTitle, statusLabel, summarize } from './status'
 
 const recipient = (email: string, status: Recipient['status'], error: string | null = null, excluded = false): Recipient =>
   ({ email, status, error, excluded })
@@ -101,7 +101,20 @@ describe('isUnfinished', () => {
 })
 
 describe('eventDateLabel', () => {
-  it('подписывает исходную дату события словом «было»', () => {
-    expect(eventDateLabel(new Date(2026, 10, 20, 19, 0).toISOString())).toBe('было 20 ноября в 19:00')
+  it('подписывает дату, на которую запланировано событие', () => {
+    expect(eventDateLabel(new Date(2026, 10, 20, 19, 0).toISOString())).toBe('Запланировано на 20 ноября в 19:00')
+  })
+})
+
+describe('canInclude', () => {
+  it.each<[CampaignStatus, boolean, boolean]>([
+    ['completed', true, true],
+    ['partial', true, true],
+    ['draft', true, false],
+    ['sending', true, false],
+    ['completed', false, false],
+    ['partial', false, false],
+  ])('%s, исключён %s — %s', (status, isExcluded, expected) => {
+    expect(canInclude(status, isExcluded)).toBe(expected)
   })
 })

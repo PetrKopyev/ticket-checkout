@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, confirmCampaign, getCampaign, getLimits, sendMessage, updateCampaign } from './client'
+import { ApiError, confirmCampaign, getCampaign, getLimits, includeRecipient, sendMessage, updateCampaign } from './client'
 
 const mockFetch = (response: Response) => {
   const fetch = vi.fn(async () => response)
@@ -30,6 +30,21 @@ describe('client', () => {
       body: '{}',
       headers: { 'Content-Type': 'application/json' },
     })
+  })
+
+  it('досылает письмо исключённому адресу', async () => {
+    const fetch = mockFetch(Response.json({ id: 1 }))
+    await includeRecipient(1, 'a@example.com')
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/1/include', {
+      method: 'POST',
+      body: '{"email":"a@example.com"}',
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
+  it('отдаёт текст ошибки досылки', async () => {
+    mockFetch(Response.json({ error: 'Адрес не исключён' }, { status: 409 }))
+    await expect(includeRecipient(1, 'a@example.com')).rejects.toThrow('Адрес не исключён')
   })
 
   it('отправляет JSON в PATCH', async () => {

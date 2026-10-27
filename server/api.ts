@@ -7,6 +7,7 @@ import {
   MAX_LETTER_BODY,
   MAX_SUBJECT,
   confirmCampaign,
+  includeRecipient,
   listCampaigns,
   mustGetCampaign,
   resumeCampaign,
@@ -150,7 +151,7 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
       resetDemo(db)
       return { ok: true }
     }
-    const match = path.match(/^\/api\/campaigns\/(\d+)(\/confirm|\/resume)?$/)
+    const match = path.match(/^\/api\/campaigns\/(\d+)(\/confirm|\/resume|\/include)?$/)
     if (!match) throw new HttpError(404, 'Не найдено')
     const id = Number(match[1])
     const action = match[2]
@@ -163,6 +164,13 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     }
     if (method === 'POST' && action === '/resume') {
       const { campaign, started } = resumeCampaign(db, id)
+      if (started) runInBackground(sendPending(db, mailer, id))
+      return campaign
+    }
+    if (method === 'POST' && action === '/include') {
+      const { email } = await readBody(req)
+      if (typeof email !== 'string') throw new HttpError(400, 'Адрес должен быть строкой')
+      const { campaign, started } = includeRecipient(db, id, email)
       if (started) runInBackground(sendPending(db, mailer, id))
       return campaign
     }

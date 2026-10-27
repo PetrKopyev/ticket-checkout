@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { confirmCampaign, getCampaign, resumeCampaign, updateCampaign } from './client'
+import { confirmCampaign, getCampaign, includeRecipient, resumeCampaign, updateCampaign } from './client'
 import type { Campaign, Limits } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
@@ -38,6 +38,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const [body, setBody] = useState('')
   const [excluded, setExcluded] = useState<string[]>([])
   const [isConfirming, setIsConfirming] = useState(false)
+  const [includeEmail, setIncludeEmail] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -127,6 +128,11 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
     return confirmCampaign(campaign.id)
   })
 
+  const closeIncludeDialog = (isDone: boolean) => {
+    setIncludeEmail(null)
+    if (isDone) progress.current?.focus()
+  }
+
   const closeDialog = (isDone: boolean) => {
     setIsConfirming(false)
     if (isDone) setIsSent(true)
@@ -151,7 +157,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
           {statusLabel(campaign.status, campaign.sent)}
         </p>
       </div>
-      <p className="mt-1 text-sm text-ink-muted">Мероприятие: {eventDateLabel(campaign.startsAt)}</p>
+      <p className="mt-1 text-sm text-ink-muted">{eventDateLabel(campaign.startsAt)}</p>
       <p className="text-sm text-ink-muted">
         {addressCount} {plural(addressCount, 'уникальный адрес', 'уникальных адреса', 'уникальных адресов')}
       </p>
@@ -185,10 +191,15 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
             className={inputClass}
           />
           {limits && <LengthCounter length={body.length} max={limits.body} />}
-          <EmailPreview heading="Так выглядит письмо" subject={subject} body={body} />
+          <EmailPreview heading="Так увидит покупатель" subject={subject} body={body} recipientsCount={recipientsCount} />
         </div>
       ) : (
-        <EmailPreview heading="Письмо" subject={campaign.subject} body={campaign.body} />
+        <EmailPreview
+          heading="Отправленное письмо"
+          subject={campaign.subject}
+          body={campaign.body}
+          recipientsCount={recipientsCount}
+        />
       )}
 
       {!isDraft && (
@@ -226,15 +237,19 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
         </div>
       )}
 
-      {error && !isConfirming && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
+      {error && !isConfirming && !includeEmail && <p role="alert" className={`${alertClass} mt-4`}>{error}</p>}
 
       <RecipientsTable
         key={campaign.id}
         recipients={campaign.recipients}
         summary={summarize(campaign)}
-        editable={isDraft}
+        status={campaign.status}
         excluded={excluded}
         onToggle={toggle}
+        onInclude={(email) => {
+          setError('')
+          setIncludeEmail(email)
+        }}
       />
 
       {isDraft && (
@@ -269,6 +284,22 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
           error={error}
           onConfirm={send}
           onClose={closeDialog}
+        />
+      )}
+
+      {includeEmail && (
+        <ConfirmDialog
+          eventTitle={campaign.eventTitle}
+          eventDate={eventDateLabel(campaign.startsAt)}
+          subject={campaign.subject}
+          body={campaign.body}
+          recipientsCount={1}
+          excludedCount={0}
+          email={includeEmail}
+          isBusy={isBusy}
+          error={error}
+          onConfirm={() => run(() => includeRecipient(campaign.id, includeEmail))}
+          onClose={closeIncludeDialog}
         />
       )}
     </section>

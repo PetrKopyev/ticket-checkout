@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { Recipient } from './client'
+import type { CampaignStatus, Recipient } from './client'
+import { canInclude } from './status'
 import type { Summary } from './status'
 import { secondaryButtonClass } from '../components/ui'
 
@@ -13,13 +14,15 @@ type Filter = 'all' | 'failed' | 'excluded'
 
 const filterButtonClass = `${secondaryButtonClass} aria-pressed:border-violet-bright aria-pressed:bg-surface-muted aria-pressed:text-ink`
 
-const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: {
+const RecipientsTable = ({ recipients, summary, status, excluded, onToggle, onInclude }: {
   recipients: Recipient[]
   summary: Summary
-  editable: boolean
+  status: CampaignStatus
   excluded: string[]
   onToggle: (email: string) => void
+  onInclude: (email: string) => void
 }) => {
+  const editable = status === 'draft'
   const [filter, setFilter] = useState<Filter>('all')
 
   const lists = {
@@ -73,7 +76,7 @@ const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: 
           )}
           {shown.map((recipient) => {
             const isExcluded = excluded.includes(recipient.email)
-            const status = statusView[recipient.status]
+            const view = statusView[recipient.status]
             return (
               <tr key={recipient.email} className="border-t border-line">
                 <td className={`break-all py-2 pr-3 align-middle ${isExcluded ? 'text-ink-muted line-through' : ''}`}>
@@ -92,10 +95,25 @@ const RecipientsTable = ({ recipients, summary, editable, excluded, onToggle }: 
                       <span className="max-sm:sr-only">Исключить</span>
                     </label>
                   )}
-                  {!editable && isExcluded && <span className="text-ink-muted">Исключён</span>}
+                  {!editable && isExcluded && (
+                    <>
+                      <span className="text-ink-muted">Исключён</span>
+                      {canInclude(status, isExcluded) && (
+                        <button
+                          type="button"
+                          aria-label={`Дослать письмо на ${recipient.email}`}
+                          onClick={() => onInclude(recipient.email)}
+                          className={`${secondaryButtonClass} mt-2 block`}
+                        >
+                          Дослать письмо
+                        </button>
+                      )}
+                      {status === 'sending' && <p className="mt-1 text-xs text-ink-muted">Дождитесь завершения</p>}
+                    </>
+                  )}
                   {!editable && !isExcluded && (
                     <>
-                      <span className={status.className}>{status.label}</span>
+                      <span className={view.className}>{view.label}</span>
                       {recipient.status === 'failed' && recipient.error && (
                         <p className="mt-1 text-xs text-ink-muted">{recipient.error}</p>
                       )}

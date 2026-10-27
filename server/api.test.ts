@@ -293,6 +293,73 @@ describe('api', () => {
     expect(await outboxCount()).toBe(6)
   })
 
+  it('include досылает исключённому одно письмо', async () => {
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com'] })
+    const include = (body: object) => request(`/api/campaigns/${id}/include`, 'POST', body)
+    expect(await include({ email: 'anna@example.com' })).toEqual({ status: 409, data: { error: 'Исключать получателей можно в черновике' } })
+    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await waitFor(id, 'completed')
+
+    const included = await include({ email: ' Anna@Example.com ' })
+    expect(included.status).toBe(200)
+    expect(included.data).toMatchObject({ status: 'sending', total: 6 })
+    expect((await waitFor(id, 'completed')).sent).toBe(6)
+    expect(await include({ email: 'anna@example.com' })).toEqual({ status: 409, data: { error: 'Получатель уже включён' } })
+    expect(await outboxCount()).toBe(6)
+  })
+
+  it('include проверяет тело и адрес', async () => {
+    const id = await createDraft()
+    const include = (body: object) => request(`/api/campaigns/${id}/include`, 'POST', body)
+    expect((await include({})).status).toBe(400)
+    expect((await include({ email: 1 })).status).toBe(400)
+    expect((await include({ email: ['anna@example.com'] })).status).toBe(400)
+    expect(await include({ email: 'gleb@example.com' })).toMatchObject({ status: 409 })
+    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await waitFor(id, 'completed')
+    expect(await include({ email: 'gleb@example.com' })).toEqual({ status: 404, data: { error: 'Такого получателя нет в рассылке' } })
+    expect((await request('/api/campaigns/999/include', 'POST', { email: 'anna@example.com' })).status).toBe(404)
+    expect((await request(`/api/campaigns/${id}/include`)).status).toBe(404)
+    const plain = await rawStatus(`/api/campaigns/${id}/include`, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{"email":"anna@example.com"}',
+    })
+    expect(plain).toBe(415)
+  })
+
+  it('два include подряд: второй ждёт конца отправки, писем без дублей', async () => {
+    const mailer = createDbMailer(db)
+    let release = gate()
+    let calls = 0
+    await listen(createFakeLlm(), {
+      send: async (mail) => {
+        calls++
+        await release.opened
+        await mailer.send(mail)
+      },
+    })
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
+    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    release.open()
+    await waitFor(id, 'completed')
+
+    release = gate()
+    const answers = await Promise.all(
+      ['anna@example.com', 'boris@example.com'].map((email) => request(`/api/campaigns/${id}/include`, 'POST', { email })),
+    )
+    expect(answers.map((answer) => answer.status).sort()).toEqual([200, 409])
+    expect(answers.find((answer) => answer.status === 409)?.data).toEqual({ error: 'Дождитесь завершения отправки' })
+    release.open()
+    const afterFirst = await waitFor(id, 'completed')
+    const left = afterFirst.recipients.find((recipient: Json) => recipient.excluded).email
+
+    expect((await request(`/api/campaigns/${id}/include`, 'POST', { email: left })).status).toBe(200)
+    expect((await waitFor(id, 'completed')).sent).toBe(6)
+    expect(calls).toBe(6)
+    expect(await outboxCount()).toBe(6)
+  })
+
   it('падение LLM — 502', async () => {
     vi.spyOn(console, 'error').mockImplementationOnce(() => {})
     await listen({ chat: async () => { throw new Error('LLM ответил 500') } })

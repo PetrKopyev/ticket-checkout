@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'react'
 import { plural } from '../format'
 import { alertClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
-const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, isBusy, error, onConfirm, onClose }: {
+const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, excludedCount, email, isBusy, error, onConfirm, onClose }: {
   eventTitle: string
   eventDate: string
   subject: string
   body: string
   recipientsCount: number
   excludedCount: number
+  email?: string
   isBusy: boolean
   error: string
   onConfirm: () => Promise<boolean>
@@ -37,16 +38,23 @@ const ConfirmDialog = ({ eventTitle, eventDate, subject, body, recipientsCount, 
       className="m-auto w-[calc(100%-1rem)] max-w-lg rounded-3xl border border-line-strong bg-card p-0 text-ink shadow-card backdrop:bg-black/70"
     >
       <div className="p-5 max-sm:px-3 max-sm:py-4">
-        <h2 id="confirm-heading" className="text-lg sm:text-xl">Отправить рассылку?</h2>
+        <h2 id="confirm-heading" className="text-lg sm:text-xl">{email ? 'Дослать письмо?' : 'Отправить рассылку?'}</h2>
         <div id="confirm-summary" className="mt-3 flex flex-col gap-3">
           <div>
             <p className="break-words font-semibold">{eventTitle}</p>
-            <p className="text-sm text-ink-muted">Мероприятие: {eventDate}</p>
+            <p className="text-sm text-ink-muted">{eventDate}</p>
           </div>
-          <p>
-            Отправить {recipientsCount}{'\u00a0'}{plural(recipientsCount, 'получателю', 'получателям', 'получателям')},
-            исключено{'\u00a0'}{excludedCount}
-          </p>
+          {email ? (
+            <div>
+              <p>Отправить 1{'\u00a0'}получателю</p>
+              <p className="break-all font-semibold">{email}</p>
+            </div>
+          ) : (
+            <p>
+              Отправить {recipientsCount}{'\u00a0'}{plural(recipientsCount, 'получателю', 'получателям', 'получателям')},
+              исключено{'\u00a0'}{excludedCount}
+            </p>
+          )}
           <div className="rounded-control border border-line bg-bg-soft p-3">
             <p className="break-words font-bold">{subject}</p>
             {/* Обрезка по высоте строк, без многоточия: строка не рвётся посреди слова. */}
