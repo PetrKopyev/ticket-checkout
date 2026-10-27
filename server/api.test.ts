@@ -118,12 +118,15 @@ describe('api', () => {
     expect(await outboxCount()).toBe(0)
   })
 
-  it('повторный confirm с другими полями возвращает 200 и рассылку без повторной отправки', async () => {
+  it.each([
+    { subject: 'Другая' }, { body: 'Другой текст' }, { excluded: ['anna@example.com'] },
+  ])('повторный confirm с другими полями %j возвращает 409 без повторной отправки', async (patch) => {
     const id = await createDraft()
     expect((await confirm(id)).status).toBe(200)
     const campaign = await waitFor(id, 'completed')
-    expect(await request(`/api/campaigns/${id}/confirm`, 'POST', { subject: 'Другая', body: '', excluded: [] }))
-      .toEqual({ status: 200, data: campaign })
+    expect(await request(`/api/campaigns/${id}/confirm`, 'POST', { ...await shownLetter(id), ...patch }))
+      .toEqual({ status: 409, data: { error: 'Рассылка уже отправлена с другим содержимым. Обновите страницу' } })
+    expect(await confirm(id)).toEqual({ status: 200, data: campaign })
     expect(await outboxCount()).toBe(6)
   })
 
@@ -249,6 +252,8 @@ describe('api', () => {
     expect(isLocalHost('localhost:3001', 3001)).toBe(true)
     expect(isLocalHost('evil.example:3001', 3001)).toBe(false)
     expect(isLocalHost('localhost:3002', 3001)).toBe(false)
+    expect(isLocalHost('127.0.0.1.evil.com:3001', 3001)).toBe(false)
+    expect(isLocalHost('127.0.0.1:3002', 3001)).toBe(false)
     expect(isLocalHost('localhost', 3001)).toBe(false)
     expect(isLocalHost(undefined, 3001)).toBe(false)
   })
@@ -280,6 +285,7 @@ describe('api', () => {
     const patch = (type: string) =>
       rawStatus(`/api/campaigns/${id}`, { method: 'PATCH', headers: { 'Content-Type': type }, body: '{"subject":"Новая"}' })
     expect(await patch('text/plain')).toBe(415)
+    expect(await patch('application/jsonx')).toBe(415)
     expect(await patch('application/json; charset=utf-8')).toBe(200)
   })
 
@@ -292,6 +298,18 @@ describe('api', () => {
     expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(2001) })).status).toBe(400)
     expect((await request('/api/campaigns')).data).toEqual([])
     expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(2000) })).status).toBe(200)
+  })
+
+  it.each([65536, 65537])('проверяет границу размера JSON в байтах: %s', async (bytes) => {
+    const body = JSON.stringify({ down: true, padding: 'я'.repeat(32750) })
+    const sized = body + ' '.repeat(bytes - Buffer.byteLength(body))
+    expect(Buffer.byteLength(sized)).toBe(bytes)
+    expect((await request('/api/demo/mailer', 'POST', sized)).status).toBe(bytes === 65536 ? 200 : 413)
+  })
+
+  it('ограничивает длину сообщения после trim', async () => {
+    expect((await request('/api/assistant/message', 'POST', { text: `  ${'а'.repeat(2000)}\n` })).status).toBe(200)
+    expect((await request('/api/assistant/message', 'POST', { text: `  ${'а'.repeat(2001)}\n` })).status).toBe(400)
   })
 
   it('список рассылок: новые сверху, исключённые не считаются', async () => {

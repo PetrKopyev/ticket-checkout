@@ -9,7 +9,7 @@ const EventHeader = () => (
       <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
       Покупка билетов
     </p>
-    <h1 className="min-w-0 break-words text-2xl sm:text-3xl">{EVENT.title}</h1>
+    <h1 className="min-w-0 break-words text-xl sm:text-3xl">{EVENT.title}</h1>
     <p className="mt-3 break-words text-ink-muted">{EVENT.date} · {EVENT.place}</p>
     <div className="mt-5 flex flex-wrap gap-2">
       <p className={chipClass}>Полный от {CHILD_LIMIT} лет — {formatPrice(FULL_PRICE)}</p>

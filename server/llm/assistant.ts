@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
+import { parseMoveDate } from './date.ts'
 import { TOOLS, runTool } from './tools.ts'
 import type { ChatMessage, LlmClient } from './types.ts'
 
@@ -70,6 +71,7 @@ export const getHistory = (db: DatabaseSync) =>
 export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, text: string) => {
   saveMessage(db, { role: 'user', content: text })
   const messages: ChatMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...loadRecentMessages(db)]
+  const request = messages.findLast((message) => message.role === 'user' && parseMoveDate(message.content))?.content ?? ''
   let campaignId: number | null = null
   for (let step = 0; step < MAX_STEPS; step++) {
     const reply = await llm.chat(messages, TOOLS).catch((error) => {
@@ -83,7 +85,7 @@ export const sendAssistantMessage = async (db: DatabaseSync, llm: LlmClient, tex
       const isDraft = call.name === 'create_draft_campaign'
       const result = isDraft && campaignId !== null
         ? { error: 'Черновик в этом ответе уже создан' }
-        : runToolSafely(db, call.name, call.arguments, text)
+        : runToolSafely(db, call.name, call.arguments, request)
       if (isDraft && 'campaign_id' in result) campaignId = result.campaign_id as number
       const message: ChatMessage = { role: 'tool', content: JSON.stringify(result), toolCallId: call.id }
       saveMessage(db, message)

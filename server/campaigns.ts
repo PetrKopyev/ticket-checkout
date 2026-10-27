@@ -145,13 +145,13 @@ export const updateDraft = (
 
 export const confirmCampaign = (db: DatabaseSync, id: number, shown: { subject: string; body: string; excluded: string[] }) => {
   const campaign = mustGetCampaign(db, id)
-  if (campaign.status === 'draft') {
-    const excluded = new Set(shown.excluded.map(normalizeEmail))
-    const savedExcluded = campaign.recipients.filter((recipient) => recipient.excluded)
-    if (shown.subject !== campaign.subject || shown.body !== campaign.body
-      || excluded.size !== savedExcluded.length || savedExcluded.some((recipient) => !excluded.has(recipient.email))) {
-      throw new CampaignStateError('Рассылка изменилась в другой вкладке. Обновите страницу')
-    }
+  const excluded = new Set(shown.excluded.map(normalizeEmail))
+  const savedExcluded = campaign.recipients.filter((recipient) => recipient.excluded)
+  if (shown.subject !== campaign.subject || shown.body !== campaign.body
+    || excluded.size !== savedExcluded.length || savedExcluded.some((recipient) => !excluded.has(recipient.email))) {
+    throw new CampaignStateError(campaign.status === 'draft'
+      ? 'Рассылка изменилась в другой вкладке. Обновите страницу'
+      : 'Рассылка уже отправлена с другим содержимым. Обновите страницу')
   }
   if (campaign.status === 'draft' && campaign.total === 0) throw new CampaignStateError('Нет получателей')
   if (campaign.status === 'draft' && !(campaign.subject.trim() && campaign.body.trim())) {

@@ -1,3 +1,4 @@
+import { readLimitedBody } from './limit.ts'
 import type { ChatMessage, LlmClient, LlmReply, ToolDef } from './types.ts'
 
 type OpenAiConfig = { baseUrl: string; model: string; apiKey: string }
@@ -36,7 +37,7 @@ export const createOpenAiLlm = ({ baseUrl, model, apiKey }: OpenAiConfig): LlmCl
       signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) throw new Error(`LLM ответил ${response.status}`)
-    const { message } = ((await response.json()) as OpenAiResponse).choices[0]
+    const { message } = (JSON.parse(await readLimitedBody(response.body!)) as OpenAiResponse).choices[0]
     return {
       content: message.content,
       toolCalls: (message.tool_calls ?? []).map((call) => ({

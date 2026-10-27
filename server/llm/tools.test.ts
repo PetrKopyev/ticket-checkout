@@ -14,7 +14,7 @@ vi.mock('../campaigns.ts', () => ({
 vi.mock('../recipients.ts', () => ({ selectRecipients: vi.fn(() => []) }))
 
 const event = { id: 'ceramics', title: 'Мастер-класс "Керамика"', starts_at: '2026-11-13T19:00', place: 'Москва' }
-const statement = { get: vi.fn(), all: vi.fn(() => []), run: vi.fn() }
+const statement = { get: vi.fn(), all: vi.fn((): object[] => []), run: vi.fn() }
 const db = { prepare: () => statement } as unknown as DatabaseSync
 const draft = (subject: string, body: string, request = '') =>
   runTool(db, 'create_draft_campaign', JSON.stringify({ event_id: event.id, subject, body }), request)
@@ -32,7 +32,7 @@ describe('проверка письма перед созданием черно
     expect(createDraft).not.toHaveBeenCalled()
   })
 
-  it.each(['Здравствуйте!', '20 ноября', '19:00', '25 ноября, 18:30'])(
+  it.each(['Здравствуйте!', '20 ноября', '19:00', '25 ноября, 18:30', '20 декабря, 19:00', '20 ноября, 19:30'])(
     'отклоняет письмо без полной даты из запроса: %s', (body) => {
       expect(draft('Керамика', body, 'Перенеси на 20 ноября, 19:00')).toEqual({
         error: 'В письме должны быть название мероприятия и новая дата: добавьте дату «20 ноября, 19:00»',
@@ -51,6 +51,8 @@ describe('проверка письма перед созданием черно
   it.each([
     ['Перенеси на 20 ноября, 19:00', 'Перенос', 'керамика 20 НОЯБРЯ в 19:00'],
     ['Перенеси на 25 ноября в 18:30', 'КЕРАМИКА', '25 ноября, 18:30'],
+    ['Перенеси на 20 ноября 2026 года, 19.00', 'Керамика', 'в 19:00 20.11.2027'],
+    ['Перенеси на 20.11.2026 в 19:00', 'Керамика', '20 ноября 2026, 19.00'],
   ])('создаёт черновик с названием и датой: %s', (request, subject, body) => {
     expect(draft(subject, body, request)).toEqual({ campaign_id: 1, recipients_count: 6 })
     expect(createDraft).toHaveBeenCalledWith(db, { eventId: event.id, subject, body })
@@ -98,7 +100,13 @@ describe('проверка письма перед созданием черно
 })
 
 describe('запрос организатора', () => {
-  it('передаёт последнее сообщение в проверку инструмента', async () => {
+  it.each([
+    ['Перенеси на 20 ноября, 19:00', 'Перенеси на 25 ноября в 18:30'],
+    ['Перенеси на 25 ноября в 18:30', 'да, создай'],
+  ])('передаёт последний запрос с датой в проверку инструмента: %s → %s', async (previous, text) => {
+    statement.all.mockReturnValueOnce([text, previous].map((content) => ({
+      role: 'user', content, tool_calls: null, tool_call_id: null,
+    })))
     const args = JSON.stringify({ event_id: event.id, subject: 'Керамика', body: '20 ноября, 19:00' })
     let step = 0
     const llm: LlmClient = {
@@ -106,7 +114,7 @@ describe('запрос организатора', () => {
         ? { content: null, toolCalls: [{ id: 'draft', name: 'create_draft_campaign', arguments: args }] }
         : { content: 'Уточните дату', toolCalls: [] },
     }
-    expect(await sendAssistantMessage(db, llm, 'Перенеси на 25 ноября в 18:30')).toEqual({
+    expect(await sendAssistantMessage(db, llm, text)).toEqual({
       reply: 'Уточните дату', campaignId: null,
     })
     expect(statement.run).toHaveBeenCalledWith('tool', JSON.stringify({

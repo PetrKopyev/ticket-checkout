@@ -20,7 +20,21 @@ describe('имитация LLM', () => {
   it('готовит перенос, даже если попросили обновить афишу', async () => {
     const result = await reply('Перенеси мастер-класс по керамике на 05 декабря, в 9:00 и обнови афишу')
     expect(result.toolCalls[0].name).toBe('create_draft_campaign')
-    expect(JSON.parse(result.toolCalls[0].arguments).body).toContain('5 декабря, 9:00')
+    expect(JSON.parse(result.toolCalls[0].arguments).body).toBe(
+      'Здравствуйте!\n\nМастер-класс "Керамика" переносится на 5 декабря, 9:00. Место прежнее: Москва. '
+      + 'Ваши билеты остаются в силе.\n\nКоманда Sqoch',
+    )
+  })
+
+  it('подписывает письмо без даты', async () => {
+    const result = await reply('Напиши покупателям Керамики')
+    expect(JSON.parse(result.toolCalls[0].arguments).body)
+      .toBe('Здравствуйте!\n\nПишем вам по поводу мероприятия Мастер-класс "Керамика".\n\nКоманда Sqoch')
+  })
+
+  it('готовит письмо с числовой датой и временем перед датой', async () => {
+    const result = await reply('Перенеси Керамику на в 19:00 20.11.2026')
+    expect(JSON.parse(result.toolCalls[0].arguments).body).toContain('20 ноября, 19:00')
   })
 
   it('берёт последнюю дату для письма', async () => {

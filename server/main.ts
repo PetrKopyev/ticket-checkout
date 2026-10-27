@@ -3,10 +3,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname } from 'node:path'
 import { isLocalHost, parsePath } from './api.ts'
 import { getApp } from './app.ts'
+import { parsePort } from './env.ts'
 import { resolveStatic } from './static.ts'
 
 const DIST = 'dist'
-const PORT = Number(process.env.PORT ?? 3001)
+const PORT = parsePort(process.env.PORT)
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -22,7 +23,7 @@ const TYPES: Record<string, string> = {
 const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
-  'Content-Security-Policy': "frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'",
 }
 
 const api = getApp()

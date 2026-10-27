@@ -1,6 +1,7 @@
 import { createApiHandler } from './api.ts'
 import { recoverCampaigns } from './campaigns.ts'
 import { openDb } from './db.ts'
+import { parseDelay } from './env.ts'
 import { createLlm } from './llm/select.ts'
 import { createDbMailer } from './mailer.ts'
 import { seed } from './seed.ts'
@@ -12,10 +13,11 @@ const apps = ((globalThis as { apiHandlers?: Map<string, ApiHandler> }).apiHandl
 export const getApp = (dbPath = process.env.DB_PATH ?? 'data/app.db') => {
   const existing = apps.get(dbPath)
   if (existing) return existing
+  const delayMs = parseDelay(process.env.MAIL_DELAY_MS)
   const llm = createLlm()
   const db = openDb(dbPath)
   seed(db)
-  const mailer = createDbMailer(db, { delayMs: Number(process.env.MAIL_DELAY_MS ?? 400) })
+  const mailer = createDbMailer(db, { delayMs })
   recoverCampaigns(db, mailer).catch(console.error)
   const handler = createApiHandler(db, llm, mailer)
   apps.set(dbPath, handler)

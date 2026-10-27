@@ -25,14 +25,14 @@ const letter = (event: EventInfo, text: string) => {
   if (!date) {
     return {
       subject: `${event.title}: важная информация`,
-      body: `Здравствуйте!\n\nПишем вам по поводу мероприятия ${event.title}.\n\nДо встречи!`,
+      body: `Здравствуйте!\n\nПишем вам по поводу мероприятия ${event.title}.\n\nКоманда Sqoch`,
     }
   }
   const when = `${date.day} ${date.month}, ${date.time}`
   return {
     subject: `${event.title} переносится на ${when}`,
-    body: `Здравствуйте!\n\nМероприятие ${event.title} переносится на ${when}. Место прежнее: ${event.place}. `
-      + 'Ваши билеты остаются в силе.\n\nДо встречи!',
+    body: `Здравствуйте!\n\n${event.title} переносится на ${when}. Место прежнее: ${event.place}. `
+      + 'Ваши билеты остаются в силе.\n\nКоманда Sqoch',
   }
 }
 
@@ -63,7 +63,7 @@ export const createFakeLlm = (): LlmClient => ({
         + `например: Переносим мастер-класс “Керамика” на 20 ноября, 19:00. Доступны: ${events.map((item) => item.title).join(', ')}.`)
     }
     if (match && !date) {
-      return say(`Не понял дату переноса: «${match[1]} ${match[2]}, ${match[3]}». Напишите, например: «на 20 ноября, 19:00»`)
+      return say(`Не понял дату переноса: «${match[0]}». Напишите, например: «на 20 ноября, 19:00»`)
     }
     const recipients = result('list_recipients') as { count: number } | undefined
     if (!recipients) return call('list_recipients', { event_id: event.id })

@@ -17,6 +17,27 @@ beforeEach(() => {
 })
 
 describe('assistant', () => {
+  it('проверяет дату из предыдущего запроса при подтверждении без даты', async () => {
+    await sendAssistantMessage(db, {
+      chat: async () => ({ content: 'Создать черновик?', toolCalls: [] }),
+    }, 'Переносим Керамику на 20 ноября, 19:00')
+    let step = 0
+    const llm: LlmClient = {
+      chat: async () => step++ === 0
+        ? { content: null, toolCalls: [{
+          id: 'draft', name: 'create_draft_campaign',
+          arguments: JSON.stringify({ event_id: 'ceramics', subject: 'Керамика', body: '20 декабря, 19:00' }),
+        }] }
+        : { content: 'Уточните дату', toolCalls: [] },
+    }
+    expect(await sendAssistantMessage(db, llm, 'да, создай')).toEqual({ reply: 'Уточните дату', campaignId: null })
+    const result = db.prepare("SELECT content FROM chat_messages WHERE role = 'tool'").get() as { content: string }
+    expect(JSON.parse(result.content)).toEqual({
+      error: 'В письме должны быть название мероприятия и новая дата: добавьте дату «20 ноября, 19:00»',
+    })
+    expect(db.prepare('SELECT COUNT(*) AS count FROM campaigns').get()).toEqual({ count: 0 })
+  })
+
   it('готовит черновик о переносе с датой из просьбы', async () => {
     const { reply, campaignId } = await sendAssistantMessage(
       db,

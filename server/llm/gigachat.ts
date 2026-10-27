@@ -4,6 +4,7 @@ import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import type { RequestOptions } from 'node:https'
 import { rootCertificates } from 'node:tls'
+import { readLimitedBody } from './limit.ts'
 import type { ChatMessage, LlmClient, LlmReply, ToolDef } from './types.ts'
 
 type GigachatConfig = {
@@ -23,14 +24,14 @@ type GigachatResponse = {
   } }[]
 }
 
+class GigachatConfigError extends Error {}
+
 const parseArguments = (value: unknown, history = false): Record<string, unknown> => {
+  let args = value
   try {
-    const args = typeof value === 'string' ? JSON.parse(value) : value
-    if (args && typeof args === 'object' && !Array.isArray(args)) return args
-  } catch {
-    if (history) return {}
-    throw new Error('GigaChat: аргументы функции должны быть объектом JSON')
-  }
+    if (typeof value === 'string') args = JSON.parse(value)
+  } catch {}
+  if (args && typeof args === 'object' && !Array.isArray(args)) return args as Record<string, unknown>
   if (history) return {}
   throw new Error('GigaChat: аргументы функции должны быть объектом JSON')
 }
@@ -79,7 +80,7 @@ export const createGigachatLlm = ({
           readFileSync(new URL('../../certs/russian_trusted_sub_ca.cer', import.meta.url), 'utf8'),
         ]
       } catch (error) {
-        throw new Error('Не удалось загрузить сертификаты GigaChat', { cause: error })
+        throw new GigachatConfigError('Не удалось загрузить сертификаты GigaChat', { cause: error })
       }
     }
     return certificates
@@ -94,7 +95,7 @@ export const createGigachatLlm = ({
       try {
         const target = new URL(url)
         if (target.protocol !== 'http:' && target.protocol !== 'https:') {
-          throw new Error('Неподдерживаемый протокол GigaChat')
+          throw new GigachatConfigError('Неподдерживаемый протокол GigaChat')
         }
         const request = target.protocol === 'http:' ? httpRequest : httpsRequest
         const req = request(target, {
@@ -111,31 +112,22 @@ export const createGigachatLlm = ({
             req.destroy()
             return
           }
-          response.setEncoding('utf8')
-          let data = ''
-          let size = 0
-          response.on('data', (chunk: string) => {
-            size += Buffer.byteLength(chunk)
-            if (size > 1024 * 1024) {
-              reject(new Error('GigaChat: ответ слишком большой'))
-              response.destroy()
-              req.destroy()
-              return
-            }
-            data += chunk
-          })
-          response.on('end', () => {
+          readLimitedBody(response, 'GigaChat: ответ слишком большой').then((data) => {
             try {
               resolve(JSON.parse(data) as T)
             } catch {
               reject(new Error('GigaChat вернул некорректный JSON'))
             }
+          }).catch((error) => {
+            reject(error)
+            response.destroy()
+            req.destroy()
           })
         })
         req.on('error', fail)
         req.end(body)
       } catch (error) {
-        if (error instanceof Error && ['Не удалось загрузить сертификаты GigaChat', 'Неподдерживаемый протокол GigaChat'].includes(error.message)) {
+        if (error instanceof GigachatConfigError) {
           reject(error)
         } else {
           fail(error)

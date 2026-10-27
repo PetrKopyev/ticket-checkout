@@ -44,7 +44,6 @@ const toEvent = (row: EventRow) => ({ id: row.id, title: row.title, startsAt: ro
 const findEvent = (db: DatabaseSync, id: string) =>
   db.prepare('SELECT id, title, starts_at, place FROM events WHERE id = ?').get(id) as EventRow | undefined
 
-
 const parseArgs = (json: string): Record<string, unknown> | null => {
   try {
     const args = JSON.parse(json || '{}')

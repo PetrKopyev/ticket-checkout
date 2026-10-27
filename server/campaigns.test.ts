@@ -212,8 +212,36 @@ describe('подтверждение и отправка', () => {
     expect(confirmCampaign(db, id, shown).started).toBe(true)
     await sendPending(db, createDbMailer(db), id)
     expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 2)
-    expect(confirmCampaign(db, id, { subject: 'Другая', body: '', excluded: [] }).started).toBe(false)
+    expect(() => confirmCampaign(db, id, { subject: 'Другая', body: '', excluded: [] }))
+      .toThrow(new CampaignStateError('Рассылка уже отправлена с другим содержимым. Обновите страницу'))
     expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 2)
+    expect(confirmCampaign(db, id, shown).started).toBe(false)
+  })
+
+  it.each([
+    { excluded: ['anna@example.com', 'boris@example.com'] },
+    { excluded: ['boris@example.com'] },
+  ])('отклоняет отличающийся набор исключений %j', ({ excluded }) => {
+    const { id } = createDraft(db, DRAFT)
+    updateDraft(db, id, { excluded: ['anna@example.com'] })
+    expect(() => confirmCampaign(db, id, { ...DRAFT, excluded }))
+      .toThrow(new CampaignStateError('Рассылка изменилась в другой вкладке. Обновите страницу'))
+    expect(getCampaign(db, id)?.status).toBe('draft')
+    expect(listOutbox(db)).toHaveLength(0)
+  })
+
+  it.each(['sending', 'completed', 'partial'] as const)('отклоняет другое содержимое в статусе %s', (status) => {
+    const { id } = createDraft(db, DRAFT)
+    updateDraft(db, id, { excluded: ['anna@example.com'] })
+    confirmCampaign(db, id, shownLetter(db, id))
+    db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run(status, id)
+    for (const patch of [{ subject: 'Другая' }, { body: 'Другой текст' }, { excluded: [] }]) {
+      expect(() => confirmCampaign(db, id, { ...shownLetter(db, id), ...patch }))
+        .toThrow(new CampaignStateError('Рассылка уже отправлена с другим содержимым. Обновите страницу'))
+    }
+    expect(confirmCampaign(db, id, shownLetter(db, id)).started).toBe(false)
+    expect(getCampaign(db, id)?.status).toBe(status)
+    expect(listOutbox(db)).toHaveLength(0)
   })
 
   it('отправляет всем и завершает кампанию', async () => {
@@ -497,6 +525,18 @@ describe('дослать исключённому', () => {
     expect(() => includeRecipient(db, id, 'anna@example.com')).toThrow('диск полон')
     expect(getCampaign(db, id)).toEqual(campaign)
     expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT - 1)
+  })
+
+  it('включение общего адреса не меняет другую рассылку', async () => {
+    const first = await sentWithout(['anna@example.com'])
+    const second = await sentWithout(['anna@example.com'])
+    const other = getCampaign(db, second)
+    includeRecipient(db, first, 'anna@example.com')
+    expect(recipient(first, 'anna@example.com')).toMatchObject({ excluded: false, status: 'pending' })
+    expect(getCampaign(db, second)).toEqual(other)
+    await sendPending(db, createDbMailer(db), first)
+    expect(getCampaign(db, second)).toEqual(other)
+    expect(listOutbox(db).filter((mail) => mail.campaignId === second)).toHaveLength(CERAMICS_COUNT - 1)
   })
 
   it('после partial сначала resume, затем досылка без дублей', async () => {
