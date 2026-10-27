@@ -19,10 +19,10 @@
   --color-brand-mid: #6d4cab;
   --color-brand-light: #7c59c2;
   --color-shadow: #0000005c;
-  --color-paper: #f7f5fa;
-  --color-paper-ink: #1c1a21;
-  --color-paper-muted: #575361;
-  --color-paper-line: #dcd7e3;
+  --color-paper: #17142a;
+  --color-paper-ink: #fafafa;
+  --color-paper-muted: #a9a3b8;
+  --color-paper-line: #3a3354;
   --font-sans: 'Manrope Variable', sans-serif;
   --radius-control: 18px;
   --background-image-brand-gradient: linear-gradient(

@@ -18,7 +18,7 @@ const EmailPreview = ({ heading, subject, body, recipientsCount }: {
       <EnvelopeIcon />
       {heading}
     </p>
-    <div className="mt-2 rounded-3xl bg-paper p-5 text-paper-ink shadow-card max-sm:px-3 max-sm:py-4">
+    <div className="mt-2 rounded-3xl border border-violet/60 bg-gradient-to-b from-[#241a45] to-paper p-5 text-paper-ink shadow-card max-sm:px-3 max-sm:py-4">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
         <dt className="text-paper-muted">От:</dt>
         <dd>Sqoch</dd>
