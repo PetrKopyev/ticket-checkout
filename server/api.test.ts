@@ -282,9 +282,9 @@ describe('api', () => {
       }
       expect(calls).toBe(6)
       const { data } = await request('/api/outbox')
-      expect(data.items).toHaveLength(6)
+      expect(data.items).toHaveLength(3)
       expect(data.total).toBe(6)
-      expect(new Set(data.items.map((mail: Json) => mail.email)).size).toBe(6)
+      expect(new Set(data.items.map((mail: Json) => mail.email)).size).toBe(3)
     } finally {
       release.open()
     }
@@ -380,7 +380,7 @@ describe('api', () => {
     await confirm(id)
 
     const { data } = await request('/api/outbox')
-    expect(data.items).toHaveLength(5)
+    expect(data.items).toHaveLength(3)
     expect(data.total).toBe(5)
     expect(data.items.map((mail: { email: string }) => mail.email)).not.toContain('anna@example.com')
     expect((await request(`/api/campaigns/${id}`, 'PATCH', { subject: 'Ещё' })).status).toBe(409)
@@ -531,18 +531,18 @@ describe('api', () => {
     const { data } = await request('/api/outbox')
     const ids = data.items.map((mail: Json) => mail.id)
     expect(ids).toEqual([...ids].sort((a, b) => b - a))
-    expect(ids).toHaveLength(6)
+    expect(ids).toHaveLength(3)
     expect(data.total).toBe(6)
   })
 
-  it('outbox: большая рассылка возвращает последние 20 писем и общее число', async () => {
+  it('outbox: большая рассылка возвращает последние 3 письма и общее число', async () => {
     const { data: demo } = await request('/api/demo/big', 'POST', {})
     await confirm(demo.campaignId)
     const campaign = await waitFor(demo.campaignId, 'completed')
     expect(campaign.sent).toBe(demo.recipients)
     const { status, data } = await request('/api/outbox')
     expect(status).toBe(200)
-    expect(data.items).toHaveLength(20)
+    expect(data.items).toHaveLength(3)
     expect(data.total).toBe(demo.recipients)
     const { id } = db.prepare('SELECT MAX(id) AS id FROM outbox').get() as { id: number }
     expect(data.items[0].id).toBe(id)
@@ -649,9 +649,9 @@ describe('api', () => {
     await request(`/api/campaigns/${id}/include`, 'POST', { email: 'boris@example.com' })
     expect((await waitFor(id, 'completed')).sent).toBe(6)
     const { data: outbox } = await request('/api/outbox')
-    expect(outbox.items).toHaveLength(6)
+    expect(outbox.items).toHaveLength(3)
     expect(outbox.total).toBe(6)
-    expect(new Set(outbox.items.map((mail: Json) => mail.email)).size).toBe(6)
+    expect(new Set(outbox.items.map((mail: Json) => mail.email)).size).toBe(3)
   })
 
   it('include проверяет тело и адрес', async () => {

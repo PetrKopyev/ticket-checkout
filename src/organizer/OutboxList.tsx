@@ -8,10 +8,12 @@ const formatSentAt = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     .replace(',', '')
 
-const OutboxList = ({ campaigns, reloadKey, onReload }: {
+const OutboxList = ({ campaigns, currentCampaignId, reloadKey, onReload, onShowAll }: {
   campaigns: CampaignSummary[]
+  currentCampaignId: number | null
   reloadKey: number
   onReload: () => void
+  onShowAll: () => void
 }) => {
   const [items, setItems] = useState<OutboxItem[]>([])
   const [total, setTotal] = useState(0)
@@ -39,7 +41,14 @@ const OutboxList = ({ campaigns, reloadKey, onReload }: {
         <button type="button" onClick={onReload} className={secondaryButtonClass}>Обновить</button>
       </div>
       <p className="mt-1 text-sm text-ink-muted">Демо-почтовый ящик: что ушло покупателям</p>
-      {total > items.length && <p className="text-sm text-ink-muted">Показаны последние {items.length} из {total}</p>}
+      {total > items.length && (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-ink-muted">Показаны последние {items.length} из {total}</p>
+          {(campaigns.find((campaign) => campaign.id === currentCampaignId)?.sent ?? 0) > 0 && (
+            <button type="button" onClick={onShowAll} className={secondaryButtonClass}>Показать все ({total})</button>
+          )}
+        </div>
+      )}
       {error && <p role="alert" className={`${alertClass} mt-4`}>Не удалось загрузить письма: {error}</p>}
       {!error && groups.length === 0 && <p className="mt-4 text-ink-muted">Писем пока нет</p>}
       {groups.map(({ campaign, letters }) => (

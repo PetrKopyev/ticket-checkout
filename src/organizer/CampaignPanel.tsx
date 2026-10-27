@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { confirmCampaign, getCampaign, getRecipients, resumeCampaign, updateCampaign } from './client'
-import type { Campaign, Limits } from './client'
+import type { Campaign, Limits, RecipientsTab } from './client'
 import ConfirmDialog from './ConfirmDialog'
 import EmailPreview from './EmailPreview'
 import RecipientsDialog from './RecipientsDialog'
@@ -25,10 +25,11 @@ const LengthCounter = ({ length, max }: { length: number; max: number }) => leng
 
 const panelClass = `${cardClass} max-sm:px-3 max-sm:py-4`
 
-const CampaignPanel = ({ campaignId, limits, onProgress }: {
+const CampaignPanel = ({ campaignId, limits, onProgress, sentRequest }: {
   campaignId: number | null
   limits: Limits | null
   onProgress: () => void
+  sentRequest: number
 }) => {
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [subject, setSubject] = useState('')
@@ -36,6 +37,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const [excluded, setExcluded] = useState<string[]>([])
   const [isConfirming, setIsConfirming] = useState(false)
   const [isRecipientsOpen, setIsRecipientsOpen] = useState(false)
+  const [dialogTab, setDialogTab] = useState<RecipientsTab | undefined>(undefined)
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -46,6 +48,16 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const recipientsButton = useRef<HTMLButtonElement>(null)
   const progress = useRef<HTMLDivElement>(null)
   const busy = useRef(false)
+  const lastSentRequest = useRef(sentRequest)
+
+  useEffect(() => {
+    if (lastSentRequest.current === sentRequest) return
+    lastSentRequest.current = sentRequest
+    if (sentRequest > 0) {
+      setDialogTab('sent')
+      setIsRecipientsOpen(true)
+    }
+  }, [sentRequest])
 
   const apply = (next: Campaign) => {
     setCampaign(next)
@@ -263,7 +275,10 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
           ref={recipientsButton}
           type="button"
           disabled={isBusy}
-          onClick={() => setIsRecipientsOpen(true)}
+          onClick={() => {
+            setDialogTab(undefined)
+            setIsRecipientsOpen(true)
+          }}
           className={`${secondaryButtonClass} mt-3`}
         >
           Получатели ({addressCount})
@@ -318,9 +333,11 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
       {isRecipientsOpen && (
         <RecipientsDialog
           campaign={campaign}
+          initialTab={dialogTab}
           onCampaign={updateRecipients}
           onClose={() => {
             setIsRecipientsOpen(false)
+            setDialogTab(undefined)
             recipientsButton.current?.focus()
           }}
         />

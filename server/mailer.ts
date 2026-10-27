@@ -49,7 +49,7 @@ export const listOutbox = (db: DatabaseSync) =>
   (db.prepare('SELECT id, campaign_id, email, subject, sent_at FROM outbox ORDER BY id DESC').all() as OutboxRow[])
     .map((row) => ({ id: row.id, campaignId: row.campaign_id, email: row.email, subject: row.subject, sentAt: row.sent_at }))
 
-export const OUTBOX_LIMIT = 20
+export const OUTBOX_LIMIT = 3
 
 export const recentOutbox = (db: DatabaseSync) => {
   const items = (db.prepare('SELECT id, campaign_id, email, subject, sent_at FROM outbox ORDER BY id DESC LIMIT ?')

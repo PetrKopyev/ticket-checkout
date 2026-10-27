@@ -15,6 +15,7 @@ const Organizer = () => {
   const [error, setError] = useState('')
   const [resetKey, setResetKey] = useState(0)
   const [outboxKey, setOutboxKey] = useState(0)
+  const [sentRequest, setSentRequest] = useState(0)
   const [openKey, setOpenKey] = useState(0)
   const [pollAttempt, setPollAttempt] = useState(0)
   const [limits, setLimits] = useState<Limits | null>(null)
@@ -115,9 +116,15 @@ const Organizer = () => {
         <div className="grid min-w-0 gap-6">
           <CampaignList campaigns={campaigns} campaignId={campaignId} onOpen={openCampaign} />
           <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">
-            <CampaignPanel key={`${campaignId}-${openKey}`} campaignId={campaignId} limits={limits} onProgress={reloadOutbox} />
+            <CampaignPanel key={`${campaignId}-${openKey}`} campaignId={campaignId} limits={limits} onProgress={reloadOutbox} sentRequest={sentRequest} />
           </div>
-          <OutboxList campaigns={campaigns} reloadKey={outboxKey} onReload={reloadOutbox} />
+          <OutboxList
+            campaigns={campaigns}
+            currentCampaignId={campaignId}
+            reloadKey={outboxKey}
+            onReload={reloadOutbox}
+            onShowAll={() => setSentRequest((k) => k + 1)}
+          />
         </div>
       </div>
       <DemoPanel key={resetKey} onReset={reset} onBigDemo={showCampaign} />

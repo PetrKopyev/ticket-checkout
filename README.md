@@ -111,7 +111,7 @@ QR-кодом (`qrcode.react`) и событием; «Скачать билет�
 
 Кабинет (`src/organizer/`): `Organizer` (страница), `ChatPanel` (чат), `CampaignList` (список рассылок),
 `CampaignPanel` (мероприятие, письмо, счётчики, прогресс, подтверждение и «Повторить»), `RecipientsDialog`, `EmailPreview`, `ConfirmDialog`,
-`OutboxList` (последние 20 отправленных писем и общее число), `DemoPanel` (демо-настройки), `client.ts` (запросы к API),
+`OutboxList` (последние 3 отправленных письма и общее число), `DemoPanel` (демо-настройки), `client.ts` (запросы к API),
 `validate.ts`, `status.ts`, `recipientsList.ts` (слияние страниц, исключения, вкладки и доступность досылки).
 
 Над панелью расположен блок «Рассылки»: последние пять, новые сверху, с темой, статусом и прогрессом.
@@ -155,7 +155,7 @@ HTTP API (ошибки приходят как `{ "error": "..." }`):
 | `POST /api/campaigns/:id/resume` | продолжение рассылки в статусе `partial` |
 | `POST /api/campaigns/:id/include` | дослать исключённому `{ email }` после отправки (`completed`), ответ — рассылка |
 | `POST /api/campaigns/:id/include-all` | тело `{}`; включить и дослать всем исключённым из `completed`, ответ — рассылка; `409` при другом статусе или отсутствии исключённых |
-| `GET /api/outbox` | последние 20 отправленных писем и общее число: { items, total } |
+| `GET /api/outbox` | последние 3 отправленных письма и общее число: { items, total } |
 | `POST /api/demo/big` | тело `{}`; большое демо, ответ `{ campaignId, recipients: 860 }`; повторный вызов возвращает существующий черновик festival и не дублирует покупки |
 | `GET /api/demo`, `POST /api/demo/mailer` `{ down }`, `POST /api/demo/reset` | демо: служба отправки и сброс данных |
 

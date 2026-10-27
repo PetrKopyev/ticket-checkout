@@ -14,7 +14,7 @@ import {
   showIncludeRecipient,
   toggleExcluded,
 } from './recipientsList'
-import { alertClass, inputClass, secondaryButtonClass } from '../components/ui'
+import { alertClass, inputClass, primaryButtonClass, secondaryButtonClass } from '../components/ui'
 
 const statusView = {
   pending: { label: 'Ожидает', className: 'text-ink-muted' },
@@ -31,10 +31,11 @@ const emptyMessage = (tab: RecipientsTab, q: string) => {
   return 'Нет получателей'
 }
 
-const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
+const RecipientsDialog = ({ campaign, onCampaign, onClose, initialTab = 'all' }: {
   campaign: Campaign
   onCampaign: (campaign: Campaign) => void
   onClose: () => void
+  initialTab?: RecipientsTab
 }) => {
   const dialog = useRef<HTMLDialogElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
@@ -44,11 +45,11 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
   const requestId = useRef(0)
   const loadingRequest = useRef<number | null>(null)
   const busy = useRef(false)
-  const [tab, setTab] = useState<RecipientsTab>('all')
+  const [tab, setTab] = useState<RecipientsTab>(initialTab)
   const [searchText, setSearchText] = useState('')
   const [q, setQuery] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [list, setList] = useState(() => emptyRecipientsList('all', '', 0))
+  const [list, setList] = useState(() => emptyRecipientsList(initialTab, '', 0))
   const latestList = useRef(list)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -221,18 +222,21 @@ const RecipientsDialog = ({ campaign, onCampaign, onClose }: {
             ))}
           </div>
           {showIncludeAll(campaign.status, tab, campaign.excluded) && (
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={(event) => {
-                confirmTrigger.current = event.currentTarget
-                setActionError('')
-                setConfirmation({ count: campaign.excluded })
-              }}
-              className={`${secondaryButtonClass} mt-3`}
-            >
-              Дослать всем ({campaign.excluded})
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet/40 bg-surface-muted p-3">
+              <p className="text-sm text-ink-soft tabular-nums">Исключено {campaign.excluded} — можно дослать им письма</p>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={(event) => {
+                  confirmTrigger.current = event.currentTarget
+                  setActionError('')
+                  setConfirmation({ count: campaign.excluded })
+                }}
+                className={primaryButtonClass}
+              >
+                Дослать всем ({campaign.excluded})
+              </button>
+            </div>
           )}
           {actionError && !confirmation && <p role="alert" className={`${alertClass} mt-3`}>{actionError}</p>}
           <ul aria-label="Список получателей" aria-busy={isLoading} className="mt-4 min-w-0 divide-y divide-line">
