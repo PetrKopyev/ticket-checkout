@@ -101,20 +101,22 @@ describe('isUnfinished', () => {
 })
 
 describe('eventDateLabel', () => {
-  it('подписывает дату, на которую запланировано событие', () => {
-    expect(eventDateLabel(new Date(2026, 10, 20, 19, 0).toISOString())).toBe('Запланировано на 20 ноября в 19:00')
+  it('добавляет ведущие нули во времени', () => {
+    expect(eventDateLabel(new Date(2026, 10, 5, 9, 5).toISOString())).toBe('Дата в афише сейчас: 5 ноября в 09:05')
+  })
+
+  it('подписывает текущую дату в афише', () => {
+    expect(eventDateLabel(new Date(2026, 10, 20, 19, 0).toISOString())).toBe('Дата в афише сейчас: 20 ноября в 19:00')
   })
 })
 
 describe('canInclude', () => {
-  it.each<[CampaignStatus, boolean, boolean]>([
-    ['completed', true, true],
-    ['partial', true, true],
-    ['draft', true, false],
-    ['sending', true, false],
-    ['completed', false, false],
-    ['partial', false, false],
-  ])('%s, исключён %s — %s', (status, isExcluded, expected) => {
-    expect(canInclude(status, isExcluded)).toBe(expected)
+  it.each<[CampaignStatus, boolean]>([
+    ['completed', true],
+    ['partial', false],
+    ['draft', false],
+    ['sending', false],
+  ])('%s — %s', (status, expected) => {
+    expect(canInclude(status)).toBe(expected)
   })
 })

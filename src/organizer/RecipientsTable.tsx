@@ -98,7 +98,7 @@ const RecipientsTable = ({ recipients, summary, status, excluded, onToggle, onIn
                   {!editable && isExcluded && (
                     <>
                       <span className="text-ink-muted">Исключён</span>
-                      {canInclude(status, isExcluded) && (
+                      {canInclude(status) && (
                         <button
                           type="button"
                           aria-label={`Дослать письмо на ${recipient.email}`}

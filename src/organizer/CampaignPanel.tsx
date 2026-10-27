@@ -131,6 +131,7 @@ const CampaignPanel = ({ campaignId, limits, onProgress }: {
   const closeIncludeDialog = (isDone: boolean) => {
     setIncludeEmail(null)
     if (isDone) progress.current?.focus()
+    else setError('')
   }
 
   const closeDialog = (isDone: boolean) => {

@@ -42,6 +42,17 @@ describe('client', () => {
     })
   })
 
+  it('отправляет email для досылки без нормализации', async () => {
+    const fetch = mockFetch(Response.json({ id: 1 }))
+    const email = ' Anna@Example.com '
+    await includeRecipient(1, email)
+    expect(fetch).toHaveBeenCalledWith('/api/campaigns/1/include', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+
   it('отдаёт текст ошибки досылки', async () => {
     mockFetch(Response.json({ error: 'Адрес не исключён' }, { status: 409 }))
     await expect(includeRecipient(1, 'a@example.com')).rejects.toThrow('Адрес не исключён')

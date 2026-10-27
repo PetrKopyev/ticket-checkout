@@ -297,7 +297,7 @@ describe('api', () => {
     const id = await createDraft()
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com'] })
     const include = (body: object) => request(`/api/campaigns/${id}/include`, 'POST', body)
-    expect(await include({ email: 'anna@example.com' })).toEqual({ status: 409, data: { error: 'Исключать получателей можно в черновике' } })
+    expect(await include({ email: 'anna@example.com' })).toEqual({ status: 409, data: { error: 'Дослать можно после отправки рассылки' } })
     await request(`/api/campaigns/${id}/confirm`, 'POST')
     await waitFor(id, 'completed')
 
@@ -309,13 +309,44 @@ describe('api', () => {
     expect(await outboxCount()).toBe(6)
   })
 
+  it('include при упавшей почте возвращает 200, в partial досылка запрещена', async () => {
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
+    await request(`/api/campaigns/${id}/confirm`, 'POST')
+    await waitFor(id, 'completed')
+    await request('/api/demo/mailer', 'POST', { down: true })
+
+    const included = await request(`/api/campaigns/${id}/include`, 'POST', { email: 'anna@example.com' })
+    expect(included).toMatchObject({ status: 200, data: { status: 'sending' } })
+    const partial = await waitFor(id, 'partial')
+    expect(partial).toMatchObject({ sent: 4, failed: 1 })
+    expect(partial.recipients.find((recipient: Json) => recipient.email === 'anna@example.com'))
+      .toMatchObject({ status: 'failed', excluded: false })
+    for (const email of ['anna@example.com', 'boris@example.com']) {
+      expect(await request(`/api/campaigns/${id}/include`, 'POST', { email }))
+        .toEqual({ status: 409, data: { error: 'Сначала повторите отправку неотправленных писем' } })
+    }
+    expect((await request(`/api/campaigns/${id}`)).data).toEqual(partial)
+    expect(await outboxCount()).toBe(4)
+
+    await request('/api/demo/mailer', 'POST', { down: false })
+    await request(`/api/campaigns/${id}/resume`, 'POST')
+    expect((await waitFor(id, 'completed')).sent).toBe(5)
+    await request(`/api/campaigns/${id}/include`, 'POST', { email: 'boris@example.com' })
+    expect((await waitFor(id, 'completed')).sent).toBe(6)
+    const { data: outbox } = await request('/api/outbox')
+    expect(outbox).toHaveLength(6)
+    expect(new Set(outbox.map((mail: Json) => mail.email)).size).toBe(6)
+  })
+
   it('include проверяет тело и адрес', async () => {
     const id = await createDraft()
     const include = (body: object) => request(`/api/campaigns/${id}/include`, 'POST', body)
     expect((await include({})).status).toBe(400)
     expect((await include({ email: 1 })).status).toBe(400)
     expect((await include({ email: ['anna@example.com'] })).status).toBe(400)
-    expect(await include({ email: 'gleb@example.com' })).toMatchObject({ status: 409 })
+    expect(await include({ email: 'gleb@example.com' }))
+      .toMatchObject({ status: 409, data: { error: 'Дослать можно после отправки рассылки' } })
     await request(`/api/campaigns/${id}/confirm`, 'POST')
     await waitFor(id, 'completed')
     expect(await include({ email: 'gleb@example.com' })).toEqual({ status: 404, data: { error: 'Такого получателя нет в рассылке' } })

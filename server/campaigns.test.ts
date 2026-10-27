@@ -212,6 +212,21 @@ describe('подтверждение и отправка', () => {
     expect(listOutbox(db)).toHaveLength(0)
   })
 
+  it.each(['draft', 'completed'] as const)('sendPending в %s не вызывает мейлер и не меняет рассылку', async (status) => {
+    const { id } = createDraft(db, DRAFT)
+    if (status === 'completed') {
+      confirmCampaign(db, id)
+      await sendPending(db, createDbMailer(db), id)
+    }
+    const campaign = getCampaign(db, id)
+    const outbox = listOutbox(db)
+    const counting = countingMailer()
+    expect(await sendPending(db, counting, id)).toEqual(campaign)
+    expect(counting.calls).toBe(0)
+    expect(getCampaign(db, id)).toEqual(campaign)
+    expect(listOutbox(db)).toEqual(outbox)
+  })
+
   it('каждое письмо уходит с ключом идемпотентности campaignId:email', async () => {
     const id = confirmed()
     const mailer = createDbMailer(db)
@@ -367,6 +382,30 @@ describe('восстановление', () => {
     expect([draftId, partialId, completedId].map((id) => getCampaign(db, id)?.status))
       .toEqual(['draft', 'partial', 'completed'])
   })
+
+  it('сбой первой sending-кампании не мешает восстановлению второй', async () => {
+    const firstId = confirmed()
+    const secondId = confirmed()
+    const mailer = createDbMailer(db)
+    const error = new Error('Сбой отправки')
+    const broken: Mailer = {
+      send: (mail) => {
+        if (mail.campaignId === firstId) throw error
+        return mailer.send(mail)
+      },
+    }
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await recoverCampaigns(db, broken)
+      expect(logged).toHaveBeenCalledWith(error)
+      expect(getCampaign(db, firstId)?.status).toBe('partial')
+      expect(getCampaign(db, secondId)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
+      expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT)
+      expect(listOutbox(db).every((mail) => mail.campaignId === secondId)).toBe(true)
+    } finally {
+      logged.mockRestore()
+    }
+  })
 })
 
 describe('дослать исключённому', () => {
@@ -385,8 +424,7 @@ describe('дослать исключённому', () => {
     const id = await sentWithout(['anna@example.com'])
     expect(outboxEmails()).toHaveLength(CERAMICS_COUNT - 1)
 
-    const { campaign, started } = includeRecipient(db, id, ' Anna@Example.COM ')
-    expect(started).toBe(true)
+    const campaign = includeRecipient(db, id, ' Anna@Example.COM ')
     expect(campaign).toMatchObject({ status: 'sending', total: CERAMICS_COUNT, pending: 1 })
     const counting = countingMailer()
     expect(await sendPending(db, counting, id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
@@ -395,35 +433,51 @@ describe('дослать исключённому', () => {
     expect(recipient(id, 'anna@example.com')).toMatchObject({ status: 'sent', excluded: false, attempts: 1 })
   })
 
-  it('после partial: включение и resume не дублируют письма', async () => {
+  it('после partial сначала resume, затем досылка без дублей', async () => {
     const id = await sentWithout(['anna@example.com'], mailerDownAfter(2))
-    expect(getCampaign(db, id)).toMatchObject({ status: 'partial', sent: 2, failed: 1 })
+    const partial = getCampaign(db, id)
+    const outbox = listOutbox(db)
+    expect(partial).toMatchObject({ status: 'partial', sent: 2, failed: 1 })
+    expect(() => includeRecipient(db, id, 'anna@example.com'))
+      .toThrow(new CampaignStateError('Сначала повторите отправку неотправленных писем'))
+    expect(getCampaign(db, id)).toEqual(partial)
+    expect(listOutbox(db)).toEqual(outbox)
 
     setMailerDown(db, false)
-    expect(includeRecipient(db, id, 'anna@example.com').started).toBe(true)
     const counting = countingMailer()
+    expect(await resumed(id, counting)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT - 1 })
+    expect(counting.calls).toBe(CERAMICS_COUNT - 3)
+    includeRecipient(db, id, 'anna@example.com')
     expect(await sendPending(db, counting, id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
-    expect(counting.calls).toBe(CERAMICS_COUNT - 2)
-    expect(await resumed(id, counting)).toMatchObject({ status: 'completed' })
     expect(counting.calls).toBe(CERAMICS_COUNT - 2)
     expect(outboxEmails()).toEqual(getCampaign(db, id)?.recipients.map((item) => item.email))
   })
 
-  it('служба лежит при включении: адрес failed, resume дошлёт', async () => {
-    const id = await sentWithout(['anna@example.com'])
+  it('служба лежит при включении: повторная досылка запрещена до resume', async () => {
+    const id = await sentWithout(['anna@example.com', 'boris@example.com'])
     setMailerDown(db, true)
     includeRecipient(db, id, 'anna@example.com')
-    expect(await sendPending(db, createDbMailer(db), id)).toMatchObject({ status: 'partial', failed: 1 })
+    const partial = await sendPending(db, createDbMailer(db), id)
+    const outbox = listOutbox(db)
+    expect(partial).toMatchObject({ status: 'partial', failed: 1 })
+    for (const email of ['anna@example.com', 'boris@example.com']) {
+      expect(() => includeRecipient(db, id, email))
+        .toThrow(new CampaignStateError('Сначала повторите отправку неотправленных писем'))
+    }
+    expect(getCampaign(db, id)).toEqual(partial)
+    expect(listOutbox(db)).toEqual(outbox)
 
     setMailerDown(db, false)
-    expect(await resumed(id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
-    expect(listOutbox(db)).toHaveLength(CERAMICS_COUNT)
+    expect(await resumed(id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT - 1 })
+    includeRecipient(db, id, 'boris@example.com')
+    expect(await sendPending(db, createDbMailer(db), id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
+    expect(outboxEmails()).toEqual(getCampaign(db, id)?.recipients.map((item) => item.email))
   })
 
   it('черновик и идущая рассылка — CampaignStateError', () => {
     const { id: draftId } = createDraft(db, DRAFT)
     updateDraft(db, draftId, { excluded: ['anna@example.com'] })
-    expect(() => includeRecipient(db, draftId, 'anna@example.com')).toThrow('Исключать получателей можно в черновике')
+    expect(() => includeRecipient(db, draftId, 'anna@example.com')).toThrow('Дослать можно после отправки рассылки')
 
     const { id: sendingId } = createDraft(db, DRAFT)
     updateDraft(db, sendingId, { excluded: ['anna@example.com'] })
@@ -561,6 +615,56 @@ describe('рестарт', () => {
     setMailerDown(second, false)
     resumeCampaign(second, id)
     expect(await sendPending(second, createDbMailer(second), id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
+    second.close()
+  })
+
+  it('после рестарта recoverCampaigns не меняет partial и completed', async () => {
+    const path = join(dir, 'app.db')
+    const first = openDb(path)
+    seed(first)
+    const { id: partialId } = createDraft(first, DRAFT)
+    confirmCampaign(first, partialId)
+    setMailerDown(first, true)
+    await sendPending(first, createDbMailer(first), partialId)
+    setMailerDown(first, false)
+    const { id: completedId } = createDraft(first, DRAFT)
+    confirmCampaign(first, completedId)
+    await sendPending(first, createDbMailer(first), completedId)
+    const campaigns = [partialId, completedId].map((id) => getCampaign(first, id))
+    const outbox = listOutbox(first)
+    first.close()
+
+    const second = openDb(path)
+    await recoverCampaigns(second, createDbMailer(second))
+    expect([partialId, completedId].map((id) => getCampaign(second, id))).toEqual(campaigns)
+    expect(listOutbox(second)).toEqual(outbox)
+    second.close()
+  })
+
+  it('рестарт сразу после включения дошлёт ещё не отправленное письмо', async () => {
+    const path = join(dir, 'app.db')
+    const first = openDb(path)
+    seed(first)
+    const { id } = createDraft(first, DRAFT)
+    updateDraft(first, id, { excluded: ['anna@example.com'] })
+    confirmCampaign(first, id)
+    await sendPending(first, createDbMailer(first), id)
+    expect(getCampaign(first, id)?.status).toBe('completed')
+    const outbox = listOutbox(first)
+    expect(outbox).toHaveLength(CERAMICS_COUNT - 1)
+    expect(includeRecipient(first, id, 'anna@example.com')).toMatchObject({ status: 'sending', pending: 1 })
+    expect(listOutbox(first)).toEqual(outbox)
+    expect(outbox.some((mail) => mail.email === 'anna@example.com')).toBe(false)
+    first.close()
+
+    const second = openDb(path)
+    await recoverCampaigns(second, createDbMailer(second))
+    expect(getCampaign(second, id)).toMatchObject({ status: 'completed', sent: CERAMICS_COUNT })
+    const recovered = listOutbox(second)
+    expect(recovered).toHaveLength(CERAMICS_COUNT)
+    expect(recovered.filter((mail) => !outbox.some((previous) => previous.id === mail.id)))
+      .toEqual([expect.objectContaining({ email: 'anna@example.com' })])
+    expect(recovered).toEqual(expect.arrayContaining(outbox))
     second.close()
   })
 

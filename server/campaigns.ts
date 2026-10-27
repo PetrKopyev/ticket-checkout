@@ -210,30 +210,24 @@ export const resumeCampaign = (db: DatabaseSync, id: number) => {
   return { campaign: mustGetCampaign(db, id), started: changes > 0 }
 }
 
-// Дослать письмо исключённому после отправки: адрес снова pending, рассылка уходит в sending.
+// Дослать письмо исключённому только после completed: адрес снова pending, рассылка уходит в sending.
 // Ключ письма тот же campaignId:email, так что второго письма адресу не будет.
 export const includeRecipient = (db: DatabaseSync, id: number, email: string) => {
   const campaign = mustGetCampaign(db, id)
-  if (campaign.status === 'draft') throw new CampaignStateError('Исключать получателей можно в черновике')
+  if (campaign.status === 'draft') throw new CampaignStateError('Дослать можно после отправки рассылки')
   if (campaign.status === 'sending') throw new CampaignStateError('Дождитесь завершения отправки')
+  if (campaign.status === 'partial') throw new CampaignStateError('Сначала повторите отправку неотправленных писем')
   const normalized = normalizeEmail(email)
   const recipient = campaign.recipients.find((item) => item.email === normalized)
   if (!recipient) throw new CampaignNotFoundError('Такого получателя нет в рассылке')
   if (!recipient.excluded) throw new CampaignStateError('Получатель уже включён')
-  const started = transaction(db, () => {
-    const { changes } = db
-      .prepare("UPDATE campaigns SET status = 'sending' WHERE id = ? AND status IN ('completed', 'partial')")
-      .run(id)
-    if (changes > 0) {
-      db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND email = ?")
-        .run(id, normalized)
-    }
-    return changes > 0
-  })
-  return { campaign: mustGetCampaign(db, id), started }
+  db.prepare("UPDATE campaigns SET status = 'sending' WHERE id = ?").run(id)
+  db.prepare("UPDATE deliveries SET excluded = 0, status = 'pending', error = NULL WHERE campaign_id = ? AND email = ?")
+    .run(id, normalized)
+  return mustGetCampaign(db, id)
 }
 
-export const recoverCampaigns =async (db: DatabaseSync, mailer: Mailer): Promise<void> => {
+export const recoverCampaigns = async (db: DatabaseSync, mailer: Mailer): Promise<void> => {
   const campaigns = db.prepare("SELECT id FROM campaigns WHERE status = 'sending' ORDER BY id").all() as { id: number }[]
   for (const { id } of campaigns) await sendPending(db, mailer, id).catch(console.error)
 }

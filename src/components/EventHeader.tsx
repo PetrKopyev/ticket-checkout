@@ -4,7 +4,7 @@ import { ADULT_AGE, CHILD_LIMIT, CHILD_PRICE, FULL_PRICE } from '../rules'
 import { cardClass, chipClass } from './ui'
 
 const EventHeader = () => (
-  <header className={`${cardClass} mb-6 print:hidden`}>
+  <header className={`${cardClass} mb-6 max-sm:px-3 max-sm:py-4 print:hidden`}>
     <p className="mb-3 flex items-center gap-2 text-sm font-medium text-violet-soft">
       <img src="/logo.svg" alt="" width={24} height={24} className="shrink-0" />
       Покупка билетов

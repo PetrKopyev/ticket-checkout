@@ -73,7 +73,7 @@ const App = () => {
 
   return (
     <PageLayout isOrganizer={false}>
-      <div className="mx-auto min-w-0 max-w-5xl max-sm:px-2">
+      <div className="min-w-0">
         <EventHeader />
         <StepIndicator step={step} failed={step === 'result' && result?.ok === false} />
         <div ref={stepContent}>

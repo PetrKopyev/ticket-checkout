@@ -37,10 +37,9 @@ export const eventDateLabel = (iso: string) => {
   const date = new Date(iso)
   const day = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
   const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-  return `Запланировано на ${day} в ${time}`
+  return `Дата в афише сейчас: ${day} в ${time}`
 }
 
 export const isUnfinished = (campaign: CampaignSummary) => campaign.status === 'partial'
 
-export const canInclude = (status: CampaignStatus, isExcluded: boolean) =>
-  isExcluded && (status === 'completed' || status === 'partial')
+export const canInclude = (status: CampaignStatus) => status === 'completed'

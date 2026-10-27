@@ -19,13 +19,13 @@ const EmailPreview = ({ heading, subject, body, recipientsCount }: {
       {heading}
     </p>
     <div className="mt-2 rounded-3xl border border-violet/60 bg-gradient-to-b from-[#241a45] to-paper p-5 text-paper-ink shadow-card max-sm:px-3 max-sm:py-4">
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+      <dl className="grid grid-cols-1 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-3 sm:gap-y-1">
         <dt className="text-paper-muted">От:</dt>
-        <dd>Sqoch</dd>
+        <dd className="min-w-0 break-words max-sm:mb-2">Sqoch</dd>
         <dt className="text-paper-muted">Кому:</dt>
-        <dd>{recipientsCount} {plural(recipientsCount, 'получатель', 'получателя', 'получателей')}</dd>
+        <dd className="min-w-0 break-words max-sm:mb-2">{recipientsCount} {plural(recipientsCount, 'получатель', 'получателя', 'получателей')}</dd>
         <dt className="text-paper-muted">Тема:</dt>
-        <dd className="break-words font-bold">
+        <dd className="min-w-0 break-words font-bold">
           {subject.trim() ? subject : <span className="font-normal text-paper-muted">Без темы</span>}
         </dd>
       </dl>

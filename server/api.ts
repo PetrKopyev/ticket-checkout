@@ -170,8 +170,8 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     if (method === 'POST' && action === '/include') {
       const { email } = await readBody(req)
       if (typeof email !== 'string') throw new HttpError(400, 'Адрес должен быть строкой')
-      const { campaign, started } = includeRecipient(db, id, email)
-      if (started) runInBackground(sendPending(db, mailer, id))
+      const campaign = includeRecipient(db, id, email)
+      runInBackground(sendPending(db, mailer, id))
       return campaign
     }
     throw new HttpError(404, 'Не найдено')
