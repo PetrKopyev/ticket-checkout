@@ -4,7 +4,7 @@ export type Mail = { campaignId: number; email: string; subject: string; body: s
 
 // Доставка at-least-once: если процесс упадёт между send и отметкой sent, письмо уйдёт повторно.
 // Поэтому send обязан быть идемпотентным по idempotencyKey: повтор с тем же ключом не шлёт второе письмо.
-export type Mailer = { send: (mail: Mail) => Promise<void> }
+export type Mailer = { send: (mail: Mail, recipients?: number) => Promise<void> }
 
 export const mailKey = (campaignId: number, email: string) => `${campaignId}:${email}`
 
@@ -30,11 +30,13 @@ export const setMailerDown = (db: DatabaseSync, down: boolean): void => {
   ).run(down ? '1' : '0')
 }
 
+export const pauseMs = (maxDelayMs: number, recipients: number) => Math.min(maxDelayMs, 8000 / recipients)
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export const createDbMailer = (db: DatabaseSync, { delayMs = 0 } = {}): Mailer => ({
-  send: async (mail) => {
-    if (delayMs) await sleep(delayMs)
+  send: async (mail, recipients) => {
+    if (delayMs) await sleep(pauseMs(delayMs, recipients ?? 1))
     if (isMailerDown(db)) throw new MailerDownError()
     db.prepare(`
       INSERT INTO outbox (campaign_id, email, subject, body, sent_at, idempotency_key) VALUES (?, ?, ?, ?, ?, ?)

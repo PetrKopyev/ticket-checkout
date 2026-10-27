@@ -36,7 +36,7 @@ const shownLetter = async (id: number) => {
   return {
     subject: data.subject as string,
     body: data.body as string,
-    excluded: data.recipients.filter((recipient: Json) => recipient.excluded).map((recipient: Json) => recipient.email) as string[],
+    excluded: data.excludedEmails as string[],
   }
 }
 
@@ -89,6 +89,206 @@ afterEach(() => {
 })
 
 describe('api', () => {
+  it('получатели: страницы по email, total и пустая страница за концом', async () => {
+    const { data: demo } = await request('/api/demo/big', 'POST', {})
+    const path = `/api/campaigns/${demo.campaignId}/recipients`
+    const first = await request(path)
+    expect(first.status).toBe(200)
+    expect(first.data.items).toHaveLength(20)
+    expect(first.data).toMatchObject({ total: 860, counts: { all: 860, pending: 860, sent: 0, failed: 0, excluded: 0 } })
+    expect(first.data.items[0]).toEqual({ email: 'user0001@example.com', status: 'pending', error: null, excluded: false })
+    const page = await request(`${path}?offset=1&limit=100`)
+    expect(page.data.items).toHaveLength(100)
+    expect(page.data.items.map((item: Json) => item.email))
+      .toEqual(Array.from({ length: 100 }, (_, index) => `user${String(index + 2).padStart(4, '0')}@example.com`))
+    expect((await request(`${path}?offset=0&limit=1`)).data.items).toEqual([first.data.items[0]])
+    expect((await request(`${path}?offset=860`)).data).toMatchObject({ items: [], total: 860 })
+    expect((await request(`${path}?offset=1000`)).data.items).toEqual([])
+  })
+
+  it.each([
+    'limit=0', 'limit=101', 'limit=-1', 'limit=abc', 'limit=1.5', 'limit=', 'limit=1e2', 'limit=%201',
+    'offset=-1', 'offset=abc', 'offset=1.5', 'offset=', 'offset=1e2', 'offset=%2B1',
+    'offset=9007199254740992', 'tab=unknown', 'tab=', `q=${'a'.repeat(321)}`,
+  ])('получатели: неверный query %s даёт 400', async (query) => {
+    const id = await createDraft()
+    expect((await request(`/api/campaigns/${id}/recipients?${query}`)).status).toBe(400)
+  })
+
+  it('получатели: неизвестная рассылка — 404', async () => {
+    expect((await request('/api/campaigns/999/recipients')).status).toBe(404)
+  })
+
+  it('counts не включают исключённые sent и failed во вкладки статусов', async () => {
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
+    db.prepare("UPDATE deliveries SET status = 'sent' WHERE campaign_id = ? AND email IN ('anna@example.com', 'darya@example.com')").run(id)
+    db.prepare("UPDATE deliveries SET status = 'failed', error = 'Ошибка' WHERE campaign_id = ? AND email IN ('boris@example.com', 'egor@example.com')").run(id)
+    for (const tab of ['sent', 'failed']) {
+      const { data } = await request(`/api/campaigns/${id}/recipients?tab=${tab}`)
+      expect(data).toMatchObject({ total: 1, counts: { all: 6, sent: 1, failed: 1, pending: 2, excluded: 2 } })
+      expect(data.items[0].excluded).toBe(false)
+    }
+    const { data } = await request(`/api/campaigns/${id}/recipients?tab=excluded&q=ANNA`)
+    expect(data.total).toBe(1)
+    expect(data.items[0]).toMatchObject({ email: 'anna@example.com', status: 'sent', excluded: true })
+    expect(data.counts.excluded).toBe(2)
+  })
+
+  it('пустая рассылка возвращает нулевые счётчики и пустую страницу', async () => {
+    const id = await createDraft()
+    db.prepare('DELETE FROM deliveries WHERE campaign_id = ?').run(id)
+    expect((await request(`/api/campaigns/${id}/recipients`)).data)
+      .toEqual({ items: [], total: 0, counts: { all: 0, sent: 0, failed: 0, pending: 0, excluded: 0 } })
+    expect((await request(`/api/campaigns/${id}`)).data)
+      .toMatchObject({ total: 0, sent: 0, failed: 0, pending: 0, excluded: 0, excludedEmails: [] })
+  })
+
+  it('поиск нормализует регистр и пробелы, экранирует %, _ и обратную косую черту', async () => {
+    const id = await createDraft()
+    const insert = db.prepare("INSERT INTO deliveries (campaign_id, email, status) VALUES (?, ?, 'pending')")
+    for (const email of ['percent%@example.com', 'under_score@example.com', 'back\\slash@example.com']) insert.run(id, email)
+    const path = `/api/campaigns/${id}/recipients`
+    for (const [q, email] of [
+      [' ANNA@EXAMPLE ', 'anna@example.com'], ['%', 'percent%@example.com'],
+      ['_', 'under_score@example.com'], ['\\', 'back\\slash@example.com'],
+    ]) {
+      const { data } = await request(`${path}?q=${encodeURIComponent(q)}`)
+      expect(data.total).toBe(1)
+      expect(data.items.map((item: Json) => item.email)).toEqual([email])
+      expect(data.counts.all).toBe(9)
+    }
+    for (const q of ['', '   ']) expect((await request(`${path}?q=${encodeURIComponent(q)}`)).data.total).toBe(9)
+    expect((await request(`${path}?q=${'a'.repeat(320)}`)).status).toBe(200)
+    expect((await request(`${path}?q=${encodeURIComponent("' OR 1=1 --")}`)).data.total).toBe(0)
+  })
+
+  it('вкладки и counts согласованы в draft, sending, partial и completed', async () => {
+    const release = gate()
+    const mailer = createDbMailer(db)
+    await listen(createFakeLlm(), { send: async (mail) => { await release.opened; await mailer.send(mail) } })
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com'] })
+    const path = `/api/campaigns/${id}/recipients`
+    const check = async (counts: object) => {
+      for (const tab of ['all', 'pending', 'sent', 'failed', 'excluded']) {
+        const { data } = await request(`${path}?tab=${tab}`)
+        expect(data.counts).toEqual(counts)
+        expect(data.total).toBe(data.counts[tab])
+        expect(data.items).toHaveLength(data.total)
+        if (tab === 'excluded') expect(data.items.every((item: Json) => item.excluded)).toBe(true)
+        else if (tab !== 'all') expect(data.items.every((item: Json) => !item.excluded && item.status === tab)).toBe(true)
+      }
+      const { data } = await request(`${path}?q=does-not-exist`)
+      expect(data).toMatchObject({ items: [], total: 0, counts })
+    }
+    try {
+      await check({ all: 6, pending: 5, sent: 0, failed: 0, excluded: 1 })
+      await confirm(id)
+      expect((await request(`/api/campaigns/${id}`)).data.status).toBe('sending')
+      await check({ all: 6, pending: 5, sent: 0, failed: 0, excluded: 1 })
+      await request('/api/demo/mailer', 'POST', { down: true })
+      release.open()
+      await waitFor(id, 'partial')
+      await check({ all: 6, pending: 4, sent: 0, failed: 1, excluded: 1 })
+      await request('/api/demo/mailer', 'POST', { down: false })
+      await request(`/api/campaigns/${id}/resume`, 'POST', {})
+      await waitFor(id, 'completed')
+      await check({ all: 6, pending: 0, sent: 5, failed: 0, excluded: 1 })
+    } finally {
+      release.open()
+    }
+  })
+
+  it('PATCH принимает 1000 исключений, ограничивает их число, confirm не ограничивает', async () => {
+    const id = await createDraft()
+    const emails = Array.from({ length: 1000 }, (_, index) => `${'user'.repeat(12)}${index}@${'example'.repeat(6)}.com`)
+    expect(Buffer.byteLength(JSON.stringify({ excluded: emails }))).toBeGreaterThan(64 * 1024)
+    const insert = db.prepare("INSERT INTO deliveries (campaign_id, email, status) VALUES (?, ?, 'pending')")
+    emails.forEach((email) => insert.run(id, email))
+    const patched = await request(`/api/campaigns/${id}`, 'PATCH', { excluded: emails })
+    expect(patched.status).toBe(200)
+    expect(patched.data).toMatchObject({ total: 6, excluded: 1000 })
+    expect(patched.data).not.toHaveProperty('recipients')
+    expect((await request(`/api/campaigns/${id}`, 'PATCH', { excluded: Array(1007).fill('anna@example.com') })).data)
+      .toEqual({ error: 'Исключённых адресов больше, чем получателей' })
+    const shown = await shownLetter(id)
+    const confirmed = await request(`/api/campaigns/${id}/confirm`, 'POST', { ...shown, excluded: [...emails, ...emails] })
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.data).not.toHaveProperty('recipients')
+    await waitFor(id, 'completed')
+  })
+
+  it('demo/big идемпотентен, reset удаляет festival, повторный big работает', async () => {
+    const first = await request('/api/demo/big', 'POST', {})
+    expect(first.status).toBe(200)
+    expect(first.data.recipients).toBe(860)
+    expect(await request('/api/demo/big', 'POST', {})).toEqual(first)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM purchases WHERE event_id = 'festival'").get()).toEqual({ n: 1000 })
+    await request('/api/demo/reset', 'POST', {})
+    expect(db.prepare("SELECT id FROM events WHERE id = 'festival'").get()).toBeUndefined()
+    expect((await request('/api/demo/big', 'POST', {})).data.recipients).toBe(860)
+  })
+
+  it.each(['/api/demo/big', '/api/campaigns/1/include-all'])('%s читает JSON-тело и общие ограничения', async (path) => {
+    for (const body of ['[]', 'null', '{broken']) expect((await request(path, 'POST', body)).status).toBe(400)
+    expect(await rawStatus(path, { method: 'POST', body: '{}' })).toBe(415)
+    expect(await rawStatus(path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://other.example' }, body: '{}',
+    })).toBe(403)
+    expect((await request(path, 'POST', { text: 'a'.repeat(270_000) })).status).toBe(413)
+  })
+
+  it.each(['draft', 'sending', 'partial'])('include-all в %s возвращает 409', async (status) => {
+    const id = await createDraft()
+    db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run(status, id)
+    expect((await request(`/api/campaigns/${id}/include-all`, 'POST', {})).status).toBe(409)
+  })
+
+  it('include-all без исключённых — 409, неизвестная рассылка — 404', async () => {
+    const id = await createDraft()
+    await confirm(id)
+    await waitFor(id, 'completed')
+    expect(await request(`/api/campaigns/${id}/include-all`, 'POST', {}))
+      .toEqual({ status: 409, data: { error: 'Нет исключённых получателей' } })
+    expect((await request('/api/campaigns/999/include-all', 'POST', {})).status).toBe(404)
+  })
+
+  it.each(['include-all', 'include'])('параллельные include-all и %s не повторяют писем', async (action) => {
+    const mailer = createDbMailer(db)
+    let release = gate()
+    let calls = 0
+    await listen(createFakeLlm(), {
+      send: async (mail) => { calls++; await release.opened; await mailer.send(mail) },
+    })
+    const id = await createDraft()
+    await request(`/api/campaigns/${id}`, 'PATCH', { excluded: ['anna@example.com', 'boris@example.com'] })
+    await confirm(id)
+    release.open()
+    await waitFor(id, 'completed')
+    release = gate()
+    try {
+      const answers = await Promise.all([
+        request(`/api/campaigns/${id}/include-all`, 'POST', {}),
+        request(`/api/campaigns/${id}/${action}`, 'POST', { email: 'anna@example.com' }),
+      ])
+      expect(answers.map((answer) => answer.status).sort()).toEqual([200, 409])
+      expect(answers.find((answer) => answer.status === 200)?.data).not.toHaveProperty('recipients')
+      release.open()
+      const campaign = await waitFor(id, 'completed')
+      if (campaign.excluded) {
+        await request(`/api/campaigns/${id}/include-all`, 'POST', {})
+        await waitFor(id, 'completed')
+      }
+      expect(calls).toBe(6)
+      const { data } = await request('/api/outbox')
+      expect(data).toHaveLength(6)
+      expect(new Set(data.map((mail: Json) => mail.email)).size).toBe(6)
+    } finally {
+      release.open()
+    }
+  })
+
   it.each([
     { subject: 'Другая тема' },
     { body: 'Другой текст' },
@@ -188,7 +388,7 @@ describe('api', () => {
     await confirm(id)
     const partial = await waitFor(id, 'partial')
     expect(partial).toMatchObject({ pending: 5, failed: 1 })
-    expect(partial.recipients[0]).toMatchObject({ status: 'failed', error: 'Служба отправки недоступна' })
+    expect((await request(`/api/campaigns/${id}/recipients`)).data.items[0]).toMatchObject({ status: 'failed', error: 'Служба отправки недоступна' })
 
     await request('/api/demo/mailer', 'POST', { down: false })
     await request(`/api/campaigns/${id}/resume`, 'POST')
@@ -287,8 +487,8 @@ describe('api', () => {
     const plain = await fetch(`${base}/api/demo/reset`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: '{}' })
     expect(plain.status).toBe(415)
     expect((await fetch(`${base}/api/demo/reset`, { method: 'POST' })).status).toBe(415)
-    expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(100_000) })).status).toBe(413)
-    expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(33_000) })).status).toBe(413)
+    expect((await request('/api/assistant/message', 'POST', { text: 'a'.repeat(270_000) })).status).toBe(413)
+    expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(132_000) })).status).toBe(413)
     expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(2001) })).status).toBe(400)
     expect((await request('/api/campaigns')).data).toEqual([])
     expect((await request('/api/assistant/message', 'POST', { text: 'а'.repeat(2000) })).status).toBe(200)
@@ -328,8 +528,8 @@ describe('api', () => {
 
   it('рассылку без получателей не подтвердить', async () => {
     const id = await createDraft()
-    const { data } = await request(`/api/campaigns/${id}`)
-    const emails = data.recipients.map((recipient: { email: string }) => recipient.email)
+    const { data } = await request(`/api/campaigns/${id}/recipients`)
+    const emails = data.items.map((recipient: { email: string }) => recipient.email)
     await request(`/api/campaigns/${id}`, 'PATCH', { excluded: emails })
     expect(await confirm(id)).toEqual({ status: 409, data: { error: 'Нет получателей' } })
   })
@@ -397,7 +597,7 @@ describe('api', () => {
     expect(included).toMatchObject({ status: 200, data: { status: 'sending' } })
     const partial = await waitFor(id, 'partial')
     expect(partial).toMatchObject({ sent: 4, failed: 1 })
-    expect(partial.recipients.find((recipient: Json) => recipient.email === 'anna@example.com'))
+    expect((await request(`/api/campaigns/${id}/recipients`)).data.items.find((recipient: Json) => recipient.email === 'anna@example.com'))
       .toMatchObject({ status: 'failed', excluded: false })
     for (const email of ['anna@example.com', 'boris@example.com']) {
       expect(await request(`/api/campaigns/${id}/include`, 'POST', { email }))
@@ -460,7 +660,7 @@ describe('api', () => {
     expect(answers.find((answer) => answer.status === 409)?.data).toEqual({ error: 'Дождитесь завершения отправки' })
     release.open()
     const afterFirst = await waitFor(id, 'completed')
-    const left = afterFirst.recipients.find((recipient: Json) => recipient.excluded).email
+    const left = afterFirst.excludedEmails[0]
 
     expect((await request(`/api/campaigns/${id}/include`, 'POST', { email: left })).status).toBe(200)
     expect((await waitFor(id, 'completed')).sent).toBe(6)

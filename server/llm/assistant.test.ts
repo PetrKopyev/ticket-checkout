@@ -27,7 +27,7 @@ describe('assistant', () => {
     const emails = selectRecipients(db, 'ceramics')
     expect(campaign?.eventId).toBe('ceramics')
     expect(campaign?.status).toBe('draft')
-    expect(campaign?.recipients.map((recipient) => recipient.email)).toEqual(emails)
+    expect(campaign?.total).toBe(emails.length)
     expect(campaign?.body).toContain('20 ноября')
     expect(campaign?.body).toContain('19:00')
     expect(reply).toContain(String(emails.length))

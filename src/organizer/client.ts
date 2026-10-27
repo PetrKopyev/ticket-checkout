@@ -30,6 +30,8 @@ export type Campaign = {
   sent: number
   failed: number
   pending: number
+  excluded: number
+  excludedEmails: string[]
   recipients: Recipient[]
 }
 
@@ -72,17 +74,32 @@ export const getLimits = () => request<Limits>('/limits')
 
 export const listCampaigns = () => request<CampaignSummary[]>('/campaigns')
 
-export const getCampaign = (id: number) => request<Campaign>(`/campaigns/${id}`)
+// TODO: окно «Получатели» грузит страницы само, полный список не нужен
+const withRecipients = async (campaign: Omit<Campaign, 'recipients'>): Promise<Campaign> => {
+  const recipients: Recipient[] = []
+  let total = 0
+  do {
+    const page = await request<{ items: Recipient[]; total: number }>(
+      `/campaigns/${campaign.id}/recipients?tab=all&limit=100&offset=${recipients.length}`,
+    )
+    recipients.push(...page.items)
+    total = page.total
+  } while (recipients.length < total)
+  return { ...campaign, recipients }
+}
+
+export const getCampaign = (id: number) => request<Omit<Campaign, 'recipients'>>(`/campaigns/${id}`).then(withRecipients)
 
 export const updateCampaign = (id: number, patch: CampaignPatch) =>
-  request<Campaign>(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+  request<Omit<Campaign, 'recipients'>>(`/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then(withRecipients)
 
 export const confirmCampaign = (id: number, shown: Required<CampaignPatch>) =>
-  post<Campaign>(`/campaigns/${id}/confirm`, shown)
+  post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/confirm`, shown).then(withRecipients)
 
-export const resumeCampaign = (id: number) => post<Campaign>(`/campaigns/${id}/resume`)
+export const resumeCampaign = (id: number) => post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/resume`).then(withRecipients)
 
-export const includeRecipient = (id: number, email: string) => post<Campaign>(`/campaigns/${id}/include`, { email })
+export const includeRecipient = (id: number, email: string) =>
+  post<Omit<Campaign, 'recipients'>>(`/campaigns/${id}/include`, { email }).then(withRecipients)
 
 export const getOutbox = () => request<OutboxItem[]>('/outbox')
 

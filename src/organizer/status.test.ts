@@ -17,6 +17,8 @@ const campaign = (recipients: Recipient[]): Campaign => ({
   sent: 2,
   failed: 1,
   pending: 1,
+  excluded: recipients.filter((recipient) => recipient.excluded).length,
+  excludedEmails: recipients.filter((recipient) => recipient.excluded).map((recipient) => recipient.email),
   recipients,
 })
 

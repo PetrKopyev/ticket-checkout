@@ -7,8 +7,11 @@ import {
   MAX_LETTER_BODY,
   MAX_SUBJECT,
   confirmCampaign,
+  includeAllRecipients,
   includeRecipient,
   listCampaigns,
+  listRecipients,
+  RECIPIENT_TABS,
   mustGetCampaign,
   resumeCampaign,
   sendPending,
@@ -17,7 +20,7 @@ import {
 import { LlmFailedError, getHistory, sendAssistantMessage } from './llm/assistant.ts'
 import type { LlmClient } from './llm/types.ts'
 import { isMailerDown, listOutbox, setMailerDown, type Mailer } from './mailer.ts'
-import { resetDemo } from './seed.ts'
+import { createBigDemo, resetDemo } from './seed.ts'
 
 type EventRow = { id: string; title: string; starts_at: string; place: string }
 
@@ -31,7 +34,7 @@ class HttpError extends Error {
   }
 }
 
-const MAX_BODY_BYTES = 64 * 1024
+const MAX_BODY_BYTES = 256 * 1024
 const MAX_TEXT = 2000
 
 export const isLocalHost = (host: string | undefined, port: number) =>
@@ -104,6 +107,24 @@ const parsePatch = (body: Record<string, unknown>) => {
   }
 }
 
+const parseRecipientQuery = (url: string) => {
+  const query = new URL(url, 'http://localhost').searchParams
+  const tab = query.get('tab') ?? 'all'
+  if (!RECIPIENT_TABS.some((value) => value === tab)) throw new HttpError(400, 'Неизвестная вкладка получателей')
+  const q = query.get('q') ?? ''
+  if (q.length > 320) throw new HttpError(400, 'Поиск длиннее 320 символов')
+  const integer = (name: string, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) => {
+    const raw = query.get(name)
+    if (raw === null) return fallback
+    const value = Number(raw)
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min || value > max) {
+      throw new HttpError(400, `Неверный параметр ${name}`)
+    }
+    return value
+  }
+  return { tab: tab as typeof RECIPIENT_TABS[number], q, offset: integer('offset', 0, 0), limit: integer('limit', 20, 1, 100) }
+}
+
 const runInBackground = (task: Promise<unknown>) => {
   task.catch(console.error)
 }
@@ -147,14 +168,19 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
       setMailerDown(db, down)
       return { mailerDown: down }
     }
+    if (method === 'POST' && path === '/api/demo/big') {
+      await readBody(req)
+      return createBigDemo(db)
+    }
     if (method === 'POST' && path === '/api/demo/reset') {
       resetDemo(db)
       return { ok: true }
     }
-    const match = path.match(/^\/api\/campaigns\/(\d+)(\/confirm|\/resume|\/include)?$/)
+    const match = path.match(/^\/api\/campaigns\/(\d+)(\/confirm|\/resume|\/include|\/include-all|\/recipients)?$/)
     if (!match) throw new HttpError(404, 'Не найдено')
     const id = Number(match[1])
     const action = match[2]
+    if (method === 'GET' && action === '/recipients') return listRecipients(db, id, parseRecipientQuery(req.url ?? '/'))
     if (method === 'GET' && !action) return mustGetCampaign(db, id)
     if (method === 'PATCH' && !action) return updateDraft(db, id, parsePatch(await readBody(req)))
     if (method === 'POST' && action === '/confirm') {
@@ -171,6 +197,12 @@ export const createApiHandler = (db: DatabaseSync, llm: LlmClient, mailer: Maile
     if (method === 'POST' && action === '/resume') {
       const { campaign, started } = resumeCampaign(db, id)
       if (started) runInBackground(sendPending(db, mailer, id))
+      return campaign
+    }
+    if (method === 'POST' && action === '/include-all') {
+      await readBody(req)
+      const campaign = includeAllRecipients(db, id)
+      runInBackground(sendPending(db, mailer, id))
       return campaign
     }
     if (method === 'POST' && action === '/include') {
