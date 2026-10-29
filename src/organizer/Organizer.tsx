@@ -75,8 +75,10 @@ const Organizer = () => {
   }
 
   const openCampaign = (id: number) => {
-    setCampaignId(id)
-    setOpenKey((previous) => previous + 1)
+    if (id !== campaignId) {
+      setCampaignId(id)
+      setOpenKey((previous) => previous + 1)
+    }
     campaignArea.current?.focus()
   }
 
@@ -112,7 +114,7 @@ const Organizer = () => {
         </div>
       )}
       <div className="grid min-w-0 items-start gap-6 lg:grid-cols-2">
-        <ChatPanel key={resetKey} onCampaign={showCampaign} onOpenCampaign={openCampaign} />
+        <ChatPanel key={resetKey} openedCampaignId={campaignId} onCampaign={showCampaign} onOpenCampaign={openCampaign} />
         <div className="grid min-w-0 gap-6">
           <CampaignList campaigns={campaigns} campaignId={campaignId} onOpen={openCampaign} />
           <div ref={campaignArea} tabIndex={-1} className="min-w-0 scroll-mt-4 outline-none">

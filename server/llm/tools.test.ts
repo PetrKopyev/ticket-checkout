@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDraft } from '../campaigns.ts'
+import { selectRecipients } from '../recipients.ts'
 import { sendAssistantMessage } from './assistant.ts'
 import { createFakeLlm } from './fake.ts'
 import { runTool } from './tools.ts'
@@ -22,6 +23,110 @@ const draft = (subject: string, body: string, request: string = 'Перенес�
 beforeEach(() => {
   vi.clearAllMocks()
   statement.get.mockReturnValue(event)
+  statement.all.mockReturnValue([])
+})
+
+describe('поиск мероприятия', () => {
+  const fonts = { ...event, id: 'fonts', title: 'Лекция "История шрифта"' }
+
+  it('сначала ищет по точному id', () => {
+    expect(runTool(db, 'get_event', JSON.stringify({ event_id: event.id }), [])).toEqual({
+      id: event.id, title: event.title, startsAt: event.starts_at, place: event.place,
+    })
+    expect(statement.get).toHaveBeenCalledWith(event.id)
+    expect(statement.all).not.toHaveBeenCalled()
+  })
+
+  it.each(['мастер-класс Керамика', 'Керамика'])('находит мероприятие по названию: %s', (eventId) => {
+    statement.get.mockReturnValue(undefined)
+    statement.all.mockReturnValue([event, fonts])
+    expect(runTool(db, 'get_event', JSON.stringify({ event_id: eventId }), [])).toEqual({
+      id: event.id, title: event.title, startsAt: event.starts_at, place: event.place,
+    })
+    expect(statement.get).toHaveBeenCalledWith(eventId)
+  })
+
+  it.each(['"', '“', '”', '„', '«', '»', "'", '‘', '’'])(
+    'нормализует кавычки и пробелы: %s', (quote) => {
+      const ceramics = { ...event, title: `Мастер-класс ${quote}Керамика${quote}` }
+      const children = { ...event, id: 'children', title: 'Мастер-класс "Керамика для детей"' }
+      statement.get.mockReturnValue(undefined)
+      statement.all.mockReturnValue([ceramics, children])
+      expect(runTool(db, 'get_event', JSON.stringify({ event_id: `${quote}  КЕРАМИКА  ${quote}` }), []))
+        .toEqual({ id: ceramics.id, title: ceramics.title, startsAt: ceramics.starts_at, place: ceramics.place })
+      expect(statement.all).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it.each([
+    ['Керамика для', [event, { ...event, id: 'children', title: 'Мастер-класс "Керамика для детей"' }]],
+    ['Ио', [{ ...event, title: 'Живопись' }]],
+    ['', [event, { ...event, id: 'empty', title: '' }]],
+    ['   ', [event, { ...event, id: 'empty', title: '   ' }]],
+    ['«»', [{ ...event, title: '""' }]],
+  ])('не находит мероприятие по неполному или пустому названию: %s', (eventId, events) => {
+    statement.get.mockReturnValue(undefined)
+    statement.all.mockReturnValue(events)
+    expect(runTool(db, 'get_event', JSON.stringify({ event_id: eventId }), [])).toEqual({
+      error: 'Мероприятие не найдено: используйте id из list_events',
+      events: events.map(({ id, title }) => ({ id, title })),
+    })
+    expect(statement.all).toHaveBeenCalledTimes(1)
+  })
+
+  it('не читает список при получении покупателей по точному id', () => {
+    expect(runTool(db, 'list_recipients', JSON.stringify({ event_id: event.id }), []))
+      .toEqual({ count: 0 })
+    expect(selectRecipients).toHaveBeenCalledWith(db, event.id)
+    expect(statement.all).not.toHaveBeenCalled()
+  })
+
+  it.each(['get_event', 'list_recipients', 'create_draft_campaign'])(
+    '%s возвращает ошибку и все мероприятия для неизвестного названия', (name) => {
+      statement.get.mockReturnValue(undefined)
+      statement.all.mockReturnValue([event, fonts])
+      expect(runTool(db, name, JSON.stringify({ event_id: 'Живопись' }), [])).toEqual({
+        error: 'Мероприятие не найдено: используйте id из list_events',
+        events: [event, fonts].map(({ id, title }) => ({ id, title })),
+      })
+      expect(selectRecipients).not.toHaveBeenCalled()
+      expect(createDraft).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['get_event', 'list_recipients', 'create_draft_campaign'])(
+    '%s не угадывает при нескольких совпадениях', (name) => {
+      const other = { ...event, id: 'ceramics-2' }
+      statement.get.mockReturnValue(undefined)
+      statement.all.mockReturnValue([event, other, fonts])
+      expect(runTool(db, name, JSON.stringify({ event_id: 'Керамика' }), [])).toEqual({
+        error: 'Мероприятие не найдено: используйте id из list_events',
+        events: [event, other, fonts].map(({ id, title }) => ({ id, title })),
+      })
+      expect(selectRecipients).not.toHaveBeenCalled()
+      expect(createDraft).not.toHaveBeenCalled()
+    },
+  )
+
+  it('получает покупателей по найденному id', () => {
+    statement.get.mockReturnValue(undefined)
+    statement.all.mockReturnValue([event, fonts])
+    expect(runTool(db, 'list_recipients', JSON.stringify({ event_id: 'Керамика' }), []))
+      .toEqual({ count: 0 })
+    expect(selectRecipients).toHaveBeenCalledWith(db, event.id)
+  })
+
+  it('создаёт черновик по найденному id', () => {
+    statement.get.mockReturnValue(undefined)
+    statement.all.mockReturnValue([event, fonts])
+    expect(runTool(db, 'create_draft_campaign', JSON.stringify({
+      event_id: 'Керамика', subject: 'Керамика', body: '20 ноября, 19:00',
+    }), ['Перенеси Керамику на 20 ноября, 19:00'])).toEqual({ campaign_id: 1, recipients_count: 6 })
+    expect(createDraft).toHaveBeenCalledWith(db, {
+      eventId: event.id, subject: 'Керамика', body: '20 ноября, 19:00',
+    })
+    expect(statement.all).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('проверка письма перед созданием черновика', () => {

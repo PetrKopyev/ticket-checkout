@@ -6,6 +6,9 @@ import type { ToolDef } from './types.ts'
 
 type EventRow = { id: string; title: string; starts_at: string; place: string }
 
+const EVENTS_SQL = 'SELECT id, title, starts_at, place FROM events ORDER BY starts_at'
+const normalizeTitle = (title: string) => normalize(title.replace(/["“”„«»'‘’]/g, ''))
+
 const eventIdParam = { event_id: { type: 'string', description: 'id мероприятия из list_events' } }
 
 export const TOOLS: ToolDef[] = [
@@ -57,23 +60,37 @@ export const runTool = (db: DatabaseSync, name: string, argsJson: string, reques
   const args = parseArgs(argsJson)
   if (!args) return { error: 'Аргументы должны быть JSON-объектом' }
   if (name === 'list_events') {
-    return (db.prepare('SELECT id, title, starts_at, place FROM events ORDER BY starts_at').all() as EventRow[])
+    return (db.prepare(EVENTS_SQL).all() as EventRow[])
       .map(toEvent)
   }
   if (!['get_event', 'list_recipients', 'create_draft_campaign'].includes(name)) {
     return { error: `Неизвестный инструмент ${name}` }
   }
-  const event = typeof args.event_id === 'string' && findEvent(db, args.event_id)
-  if (!event) return { error: 'Мероприятие не найдено' }
+  const eventId = args.event_id
+  let events: EventRow[] | undefined
+  const getEvents = () => events ??= db.prepare(EVENTS_SQL).all() as EventRow[]
+  let event = typeof eventId === 'string' ? findEvent(db, eventId) : undefined
+  if (!event) {
+    const title = typeof eventId === 'string' ? normalizeTitle(eventId) : ''
+    const matches = getEvents().filter((row) => title
+      && (title === normalizeTitle(row.title) || title === normalizeTitle(eventTitle(row.title))))
+    if (matches.length !== 1) {
+      return {
+        error: 'Мероприятие не найдено: используйте id из list_events',
+        events: getEvents().map(({ id, title }) => ({ id, title })),
+      }
+    }
+    event = matches[0]
+  }
   if (name === 'get_event') return toEvent(event)
   if (name === 'list_recipients') return { count: selectRecipients(db, event.id).length }
   const { subject, body } = args
   if (typeof subject !== 'string' || typeof body !== 'string') return { error: 'Тема и текст письма должны быть строками' }
   const letter = normalize(`${subject} ${body}`)
   const title = eventTitle(event.title)
-  const events = db.prepare('SELECT id, title FROM events').all() as { id: string; title: string }[]
+  const requestEvents = getEvents()
   const request = requests.findLast((text) => parseMoveDate(text)
-    && (mentions(text, title) || !events.some((item) => item.id !== event.id && mentions(text, item.title))))
+    && (mentions(text, title) || !requestEvents.some((item) => item.id !== event.id && mentions(text, item.title))))
   const date = request ? parseMoveDate(request) : null
   if (!date) return { error: 'Уточните дату и время переноса: без них черновик не создаётся' }
   const dates = parseLetterDates(letter)

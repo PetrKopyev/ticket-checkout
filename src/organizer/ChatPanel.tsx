@@ -8,7 +8,8 @@ const EXAMPLE = 'Переносим мастер-класс "Керамика" �
 
 type ShownMessage = ChatMessage & { campaignId?: number }
 
-const ChatPanel = ({ onCampaign, onOpenCampaign }: {
+const ChatPanel = ({ openedCampaignId, onCampaign, onOpenCampaign }: {
+  openedCampaignId: number | null
   onCampaign: (id: number) => void
   onOpenCampaign: (id: number) => void
 }) => {
@@ -98,7 +99,7 @@ const ChatPanel = ({ onCampaign, onOpenCampaign }: {
               <span className="sr-only">{role === 'user' ? 'Вы: ' : 'Помощник: '}</span>
               {content}
             </p>
-            {campaignId !== undefined && (
+            {campaignId !== undefined && campaignId !== openedCampaignId && (
               <button
                 type="button"
                 onClick={() => onOpenCampaign(campaignId)}
